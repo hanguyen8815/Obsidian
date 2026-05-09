@@ -1,0 +1,7 @@
+interface:
+  display_name: "Tạo file HDSD"
+  short_description: "Tạo file Word HDSD chuẩn từ note Markdown."
+  default_prompt: "Use $generate-hdsd-docx to tạo hoặc cập nhật file Word HDSD từ note nguồn với đúng form chuẩn."
+
+policy:
+  allow_implicit_invocation: true
