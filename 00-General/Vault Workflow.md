@@ -96,6 +96,7 @@
 - Nếu là note công việc, nên đặt tên theo mẫu: `[Chu de] - [Noi dung chinh]`.
 - Nếu là note kiến thức, nên đặt tên theo câu hỏi hoặc chủ đề tra cứu.
 - Với note theo dự án hoặc đơn vị trong `20-Work`, ưu tiên cấu trúc thư mục con theo STT và nội dung rõ nghĩa, ví dụ: `1. Bien ban lam viec`, `2. Xu ly su co`.
+- Với biên bản họp tiến độ dự án nội bộ, ưu tiên lưu tại `20-Work/20.3.1. Bien ban hop noi bo` và đặt tên theo mẫu `YYYY-MM-DD - Bien ban hop tien do [Chu de chinh 1], [Chu de chinh 2]`.
 - Chi tiết khi được yêu cầu tạo note được quy định ở `00-General/Obsidian Created Rule.md`.
 
 ## Quy ước liên kết
