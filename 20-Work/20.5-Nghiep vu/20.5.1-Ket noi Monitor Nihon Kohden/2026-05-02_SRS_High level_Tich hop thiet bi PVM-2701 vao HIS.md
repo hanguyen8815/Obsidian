@@ -34,7 +34,7 @@
   - Ghi nhận dữ liệu vào HIS.
 - Yêu cầu tiền điều kiện của thiết bị:
   - Monitor PVM-2701 phải hỗ trợ `QI-202P Interface`.
-  - Monitor phải hỗ trợ gửi và nhận dữ liệu HL7 phục vụ luồng `Find Patient` và gửi dữ liệu sinh hiệu; tối thiểu gồm `QRY^A19`, `ADR^A19`, `ORU^R01`.
+  - Monitor phải hỗ trợ gửi và nhận dữ liệu HL7 phục vụ luồng `Find Patient` và gửi dữ liệu sinh hiệu; tối thiểu gồm `QRY^A19`, `ADR^A19`, `ORU^R01`, `ACK`.
   - Monitor phải có thao tác `Find Patient` và `New Patient` để ghép đúng ngữ cảnh Người bệnh trước khi đo.
   - Monitor phải hiển thị tối thiểu `Mã hồ sơ`, `Họ tên`, `Ngày sinh`, `Giới tính`, và `Tuổi` nếu thiết bị hỗ trợ hiển thị.
   - Thiết bị trong mô hình triển khai phải kết nối được qua IP với ISOFHTool và được đồng bộ giờ với Tool, HIS theo `GMT+7` trước khi chạy thật.
@@ -79,7 +79,7 @@
 - Khi `Find Patient` thành công, Monitor phải hiển thị đầy đủ thông tin hành chính Người bệnh theo dữ liệu HIS trả về.
   - Tối thiểu gồm `Mã hồ sơ`, `Họ tên`, `Ngày sinh`, `Giới tính`.
   - Hiển thị thêm `Tuổi` nếu thiết bị hỗ trợ.
-- Hỗ trợ quy trình Monitor gửi dữ liệu sinh hiệu qua bản tin HL7 `ORU^R01`, Tool nhận dữ liệu, áp rule chu kỳ và gửi sang HIS.
+- Hỗ trợ quy trình Monitor gửi dữ liệu sinh hiệu qua bản tin HL7 `ORU^R01`, Tool nhận dữ liệu, phản hồi bản tin HL7 `ACK` cho Monitor, áp rule chu kỳ và gửi sang HIS.
 - Chu kỳ ghi nhận sinh hiệu được tính từ thời điểm `Find Patient`.
   - Phase I chia chu kỳ theo từng đợt `10 phút` tính từ thời điểm `Find Patient`; sau mỗi `10 phút` Tool đóng 1 đợt dữ liệu và chuẩn bị đợt kế tiếp.
   - Nếu phát sinh `Find Patient` mới khi chu kỳ `10 phút` hiện tại chưa kết thúc thì Tool đóng sớm đợt dữ liệu đang mở tại thời điểm `Find Patient` mới.
@@ -93,13 +93,37 @@
 - ISOFHTool cho phép cấu hình kết nối IP tới Monitor và nhập tay `Mã máy` tương ứng với thiết bị.
 - Phase I:
   - Triển khai pilot với 1 máy tính đóng vai trò máy trung tâm và một số Monitor trong phạm vi giới hạn.
+  - Pilot giai đoạn đầu tại MEDI Plus Nam Định với `05` thiết bị.
+    - `01` thiết bị model `NIHON KOHDEN SVM-7260`.
+    - `04` thiết bị model `NIHON KOHDEN PVM-4761`.
+    - `PVM-4761` đã thử kết nối được theo cùng tài liệu của `PVM-2701`.
+  - Một máy tính trung tâm trong pilot dự kiến phục vụ `05` thiết bị và được định hướng nhỏ hơn `10` Monitor; cần xác nhận lại giới hạn tải thực tế với MEDI Plus.
+  - Phase I tập trung kết nối `05` chỉ số sống cơ bản.
+    - `Mạch`.
+    - `Nhiệt độ`.
+      - Cần kiểm tra lại thiết bị pilot có hỗ trợ hay không.
+    - `Huyết áp`.
+    - `Nhịp thở`.
+    - `SpO2`.
   - Chưa bắt buộc HIS trả chu kỳ ghi nhận sinh hiệu ngay trong API `Find Patient`.
   - Tool dùng chu kỳ mặc định `10 phút`.
   - Bắt buộc có màn hình lỗi và chức năng resend thủ công theo từng giao dịch lỗi trên ISOFHTool.
+  - Dùng lại API `SAKURA` hiện có cho ISOFHTool.
+    - API lấy thông tin Người bệnh: đã có.
+    - API cập nhật `05` chỉ số sống cơ bản `Mạch`, `Nhiệt độ`, `Huyết áp`, `Nhịp thở`, `SpO2`: đã có.
+    - Trong Phase I, phía BE không phải làm thêm API mới.
+  - ISOFHTool cần xây dựng các hạng mục chính trong Phase I.
+    - Danh sách ghép `Chỉ số sống SAKURA - Chỉ số sống Monitor`.
+    - Danh mục cấu hình kết nối Monitor gồm `Mã máy`, `IP`, `PORT` của Monitor.
+    - Luồng nhận request `QRY^A19` từ Monitor, gọi API `nbDotDieuTriId` của `SAKURA` để lấy thông tin Người bệnh, chỉ lấy các trường hợp có trạng thái `< Đã ra viện (100)`, sau đó phản hồi `ADR^A19` để Monitor hiển thị thông tin.
+    - Luồng nhận bản tin `ORU^R01` từ Monitor và gửi phản hồi `ACK`.
+    - Luồng tổng hợp dữ liệu HL7 thành JSON và gọi API cập nhật sinh hiệu vào `SAKURA`.
+    - Quản lý log và resend khi có lỗi phát sinh.
 - Phase II:
   - Bổ sung 1 thiết lập chung để cấu hình thời gian chu kỳ mặc định.
     - Nếu có khai báo chu kỳ riêng theo từng Người bệnh thì ưu tiên lấy theo khai báo của Người bệnh.
     - Nếu không có khai báo riêng thì lấy theo thiết lập chung.
+  - Mở rộng thu thập thêm các dữ liệu khác ngoài `05` chỉ số sống cơ bản của Phase I.
   - Mở rộng cơ chế retry.
   - Theo dõi giao dịch gửi HIS lỗi.
   - Bổ sung màn hình vận hành để xử lý resend.
@@ -129,6 +153,7 @@
   - Đối chiếu đúng thông tin Người bệnh.
   - Chỉ thực hiện đo sinh hiệu sau khi đã đối chiếu đúng.
 - `Find Patient` là chức năng bắt buộc trên Monitor để ghép đúng Người bệnh trước khi đo sinh hiệu.
+- Quy trình ghép Người bệnh trên Monitor dùng `Mã hồ sơ` và chức năng `Find Patient`.
 - Tại thời điểm chọn `Find Patient`:
   - Monitor gửi bản tin HL7 `QRY^A19` đến ISOFHTool.
   - ISOFHTool chuyển tiếp yêu cầu sang HIS.
@@ -156,6 +181,20 @@
   - Dữ liệu này không gắn Người bệnh trên HIS.
   - Xử lý theo quy trình tay.
 - Dữ liệu trắng vẫn đi vào ISOFHTool nhưng chỉ lưu log kỹ thuật và bảng lỗi với `Lý do lỗi = Không có Mã hồ sơ`; không gửi sang HIS.
+- Khi ISOFHTool nhận được bản tin HL7 `ORU^R01` từ Monitor thì phải phản hồi lại bản tin HL7 `ACK` để Monitor duy trì kết nối và tiếp tục gửi các bản tin tiếp theo nếu có.
+- Giai đoạn đầu tại MEDI Plus Nam Định dự kiến triển khai `05` thiết bị.
+  - `01` thiết bị model `NIHON KOHDEN SVM-7260`.
+  - `04` thiết bị model `NIHON KOHDEN PVM-4761`.
+  - `PVM-4761` đã thử kết nối được theo cùng tài liệu của `PVM-2701`.
+- Một máy tính trung tâm trong pilot dự kiến phục vụ `05` thiết bị và được định hướng nhỏ hơn `10` Monitor; cần xác nhận lại với MEDI Plus.
+- Phase I tập trung kết nối `05` chỉ số sống cơ bản.
+  - `Mạch`.
+  - `Nhiệt độ`.
+    - Cần kiểm tra lại thiết bị pilot có hỗ trợ hay không.
+  - `Huyết áp`.
+  - `Nhịp thở`.
+  - `SpO2`.
+- Phase II sẽ mở rộng thu thập thêm các dữ liệu khác và bổ sung sau.
 - Bản ghi đến trễ được xử lý theo `thời điểm đo` trong bản tin HL7.
   - Ưu tiên `OBR-7`.
   - Nếu `OBR-7` trống thì fallback `OBX-14`.
@@ -168,8 +207,9 @@
 
 | Loại | Nội dung | Nguồn / Người xác nhận | Trạng thái |
 | --- | --- | --- | --- |
-| Fact | Monitor PVM-2701 được định hướng kết nối với HIS thông qua 1 ISOFHTool trung gian. | Note Phase I, Phase II | Đã rõ |
-| Fact | Quy trình ghép Người bệnh trên Monitor dùng `Mã hồ sơ` và chức năng `Find Patient`. | Note Phase I, Q&A | Đã rõ |
+| Fact | Monitor PVM-2701 được định hướng kết nối với HIS thông qua 1 ISOFHTool trung gian. | Hà Nguyễn xác nhận 04/05/2026 | Đã rõ |
+| Fact | Quy trình ghép Người bệnh trên Monitor dùng `Mã hồ sơ` và chức năng `Find Patient`. | Hà Nguyễn xác nhận 04/05/2026 | Đã rõ |
+| Fact | Khi ISOFHTool nhận được bản tin HL7 `ORU^R01` từ Monitor thì phải phản hồi lại bản tin HL7 `ACK` để Monitor duy trì kết nối và tiếp tục gửi các bản tin tiếp theo nếu có. | Hà Nguyễn xác nhận 04/05/2026 | Đã rõ |
 | Fact | `Find Patient` là nút bấm bắt buộc trên Monitor khi thực hiện ghép ngữ cảnh Người bệnh trước khi đo. | Hà Nguyễn xác nhận 03/05/2026 | Đã rõ |
 | Fact | Tại bước `Find Patient`, Monitor gửi bản tin HL7 `QRY^A19` đến ISOFHTool; ISOFHTool chuyển tiếp sang HIS để tra cứu và parse bản tin HL7 `ADR^A19` theo dữ liệu HIS trả về để phản hồi lại Monitor. | Hà Nguyễn xác nhận 04/05/2026 | Đã rõ |
 | Fact | Khi `Find Patient` thành công, Monitor phải hiển thị đầy đủ thông tin hành chính Người bệnh theo dữ liệu HIS trả về; tối thiểu gồm `Mã hồ sơ`, `Họ tên`, `Ngày sinh`, `Giới tính`, và `Tuổi` nếu thiết bị hỗ trợ hiển thị. | Hà Nguyễn xác nhận 04/05/2026 | Đã rõ |
@@ -198,16 +238,20 @@
 | Fact | Dữ liệu trắng vẫn đi vào ISOFHTool nhưng chỉ lưu log kỹ thuật và bảng lỗi với `Lý do lỗi = Không có Mã hồ sơ`; không gửi sang HIS. | Hà Nguyễn xác nhận 04/05/2026 | Đã rõ |
 | Fact | Bản ghi đến trễ được xử lý theo `thời điểm đo` trong bản tin HL7; ưu tiên `OBR-7`, nếu `OBR-7` trống thì fallback `OBX-14`; Tool so theo cùng `Mã hồ sơ` ở `PID-3`, vẫn nhận vào chu kỳ đã đóng và cho phép resend nếu cần. | Hà Nguyễn xác nhận 04/05/2026 | Đã rõ |
 | Fact | Phase I chưa làm user-level permission trên ISOFHTool; ai truy cập được ISOFHTool trên máy server dùng riêng thì đều xem được theo phạm vi vận hành hiện tại. | Hà Nguyễn xác nhận 04/05/2026 | Đã rõ |
+| Fact | Giai đoạn đầu tại MEDI Plus Nam Định dự kiến triển khai `05` thiết bị gồm `01` thiết bị `NIHON KOHDEN SVM-7260` và `04` thiết bị `NIHON KOHDEN PVM-4761`; `PVM-4761` đã thử kết nối được theo cùng tài liệu của `PVM-2701`. | Hà Nguyễn xác nhận 04/05/2026 | Đã rõ |
+| Fact | Phase I tập trung kết nối `05` chỉ số sống cơ bản gồm `Mạch`, `Nhiệt độ`, `Huyết áp`, `Nhịp thở`, `SpO2`; Phase II sẽ mở rộng thêm các dữ liệu khác. | Hà Nguyễn cập nhật 16/05/2026 | Đã rõ |
+| Fact | Phase I dùng lại API `SAKURA` hiện có để ISOFHTool lấy thông tin Người bệnh và cập nhật `05` chỉ số sống cơ bản; phía BE không phải làm thêm API mới trong phase này. | Hà Nguyễn cập nhật 16/05/2026 | Đã rõ |
 | Fact | Bắt buộc đồng bộ giờ giữa Monitor, Tool và HIS theo GMT+7 trước khi chạy thật. | Hà Nguyễn xác nhận 02/05/2026 | Đã rõ |
 | Fact | Kênh cảnh báo vận hành hiện tại là log nội bộ; chưa triển khai cảnh báo ngoài màn hình, email hay Zalo ở giai đoạn đầu. | Hà Nguyễn xác nhận 02/05/2026 | Đã rõ |
 | Fact | Nếu không `Find Patient` được Người bệnh thì Điều dưỡng có thể chuyển `New Patient` trên Monitor để đo dữ liệu trắng; dữ liệu này không gắn Người bệnh trên HIS và xử lý theo quy trình tay. | Hà Nguyễn xác nhận 03/05/2026 | Đã rõ |
 | Constraint | Giai đoạn đầu phải ưu tiên mô hình có thể pilot nhanh, hạn chế thay đổi lớn về hạ tầng. | Note Phase I | Đã rõ |
 | Constraint | Không được làm mất dữ liệu đã nhận từ Monitor khi HIS lỗi tạm thời. | Note Phase I, Phase II | Đã rõ |
 | Constraint | Dữ liệu Người bệnh và dữ liệu sinh hiệu phải được ghi nhận đầy đủ, đúng ngữ cảnh `Mã hồ sơ`. | Hà Nguyễn xác nhận 02/05/2026 | Đã rõ |
-| Assumption | Một máy tính trung tâm trong pilot dự kiến phục vụ nhỏ hơn 10 Monitor; cần xác nhận lại với MEDI Plus. | Hà Nguyễn xác nhận 02/05/2026 | Cần xác nhận |
+| Assumption | Một máy tính trung tâm trong pilot dự kiến phục vụ `05` thiết bị và được định hướng nhỏ hơn `10` Monitor; cần xác nhận lại với MEDI Plus. | Hà Nguyễn xác nhận 04/05/2026 | Cần xác nhận |
 | Assumption | Khi máy trung tâm dừng hoạt động, Cơ sở y tế sẽ vận hành song song ghi giấy; cần xác nhận thêm khả năng lưu dữ liệu của Monitor để hoàn thiện phương án dự phòng. | Hà Nguyễn xác nhận 02/05/2026 | Cần xác nhận |
 | Fact | Tài liệu này đủ rõ để tách tiếp xuống detail level cho API, mapping, rule chu kỳ, rule resend, phân quyền và vận hành pilot. | Tổng hợp từ mục 15 và mục 16 | Đã rõ |
 | Open question | Ticket / CR / Jira liên quan là gì. | BA / PO | Mở |
+| Open question | Thiết bị pilot có hỗ trợ chỉ số `Nhiệt độ` để đưa vào phạm vi `05` chỉ số Phase I hay không. | Hà Nguyễn cập nhật 16/05/2026 | Mở |
 | Open question | Thời gian giữ log kỹ thuật và bảng lỗi của dữ liệu trắng hoặc bản ghi lỗi trên ISOFHTool là bao lâu. | BA / Triển khai / CNTT | Mở |
 
 ## 5. Nhóm dùng và bên liên quan
@@ -247,7 +291,7 @@
 | UC-02 | Chuyển Monitor sang ngữ cảnh Người bệnh mới | Monitor đang hiển thị Người bệnh cũ trước khi quét barcode `Mã hồ sơ` của Người bệnh mới | Điều dưỡng / Nhân viên y tế | Monitor sẵn sàng ghép đúng Người bệnh mới trước khi đo |
 | UC-03 | Tìm và ghép đúng Người bệnh bằng `Mã hồ sơ` | Quét barcode `Mã hồ sơ` và chọn `Find Patient` | Điều dưỡng / Nhân viên y tế | Monitor hiển thị đúng thông tin hành chính tối thiểu của Người bệnh hợp lệ để đối chiếu trước khi đo |
 | UC-04 | Từ chối ghép Người bệnh không hợp lệ hoặc hiển thị thiếu thông tin | `Mã hồ sơ` không tồn tại, đã ra viện, hoặc `Find Patient` thành công nhưng Monitor không hiển thị đủ thông tin tối thiểu | HIS / ISOFHTool / Monitor | Không đo theo luồng tích hợp, không ghi dữ liệu sang HIS và chuyển sang hướng xử lý vận hành phù hợp |
-| UC-05 | Nhận dữ liệu đo sinh hiệu từ Monitor | Hoàn tất đo sinh hiệu trên Monitor sau khi đã ghép Người bệnh | ISOFHTool | Tool nhận bản tin đo, lưu log kỹ thuật và chuẩn bị xử lý theo chu kỳ |
+| UC-05 | Nhận dữ liệu đo sinh hiệu và phản hồi `ACK` cho Monitor | Hoàn tất đo sinh hiệu trên Monitor sau khi đã ghép Người bệnh | ISOFHTool | Tool nhận bản tin đo, phản hồi `ACK`, lưu log kỹ thuật và chuẩn bị xử lý theo chu kỳ |
 | UC-06 | Gom dữ liệu theo chu kỳ Phase I và gửi gói cuối sang HIS | Chu kỳ `10 phút` kết thúc hoặc phát sinh `Find Patient` mới | ISOFHTool | HIS nhận 1 gói dữ liệu cuối cùng của chu kỳ theo đúng `Mã hồ sơ`, `thời điểm đo` và `Mã máy` |
 | UC-07 | Xử lý bản ghi đến trễ của chu kỳ đã đóng | Tool nhận bản ghi có `thời điểm đo` thuộc chu kỳ đã đóng | ISOFHTool | Bản ghi được gán đúng chu kỳ đã đóng và cho phép resend nếu làm thay đổi gói dữ liệu cuối cùng |
 | UC-08 | Theo dõi log kỹ thuật và giao dịch gửi HIS lỗi | Phát sinh lỗi gửi HIS, dữ liệu trắng hoặc cần đối soát kỹ thuật | CNTT / Triển khai ISOFH / DEV / QA | Có log kỹ thuật, danh sách lỗi và `Lý do lỗi` để tra cứu |
@@ -295,7 +339,10 @@
 [Điều dưỡng xác nhận đúng NB và đo sinh hiệu]
                 |
                 v
-[Monitor gửi dữ liệu sinh hiệu tới Tool]
+[Monitor gửi ORU^R01 tới Tool]
+                |
+                v
+[Tool phản hồi ACK cho Monitor]
                 |
                 v
 [Tool lưu log, gom dữ liệu trong chu kỳ tính từ Find Patient]
@@ -340,7 +387,8 @@
 | 8 | HIS | Trả thông tin hành chính Người bệnh cho ISOFHTool | Tool nhận kết quả tra cứu |
 | 9 | ISOFHTool -> Monitor | Parse bản tin HL7 `ADR^A19` từ dữ liệu HIS trả về và gửi lại Monitor | Monitor hiển thị đầy đủ thông tin hành chính theo dữ liệu HIS; tối thiểu `Mã hồ sơ`, `Họ tên`, `Ngày sinh`, `Giới tính`, và `Tuổi` nếu thiết bị hỗ trợ |
 | 10 | Điều dưỡng | Đối chiếu đúng Người bệnh và thực hiện đo sinh hiệu | Monitor phát sinh dữ liệu sinh hiệu |
-| 11 | Monitor | Gửi dữ liệu sinh hiệu sang ISOFHTool | Tool nhận bản ghi đo |
+| 11 | Monitor | Gửi dữ liệu sinh hiệu sang ISOFHTool bằng bản tin HL7 `ORU^R01` | Tool nhận bản ghi đo |
+| 11a | ISOFHTool -> Monitor | Gửi phản hồi bản tin HL7 `ACK` đã nhận dữ liệu | Monitor duy trì kết nối và tiếp tục gửi các lượt đo tiếp theo nếu có |
 | 12 | ISOFHTool | Lưu log, gom các bản tin trong chu kỳ tính từ thời điểm `Find Patient`, theo dõi cửa sổ `10 phút` và xác định thời điểm đóng chu kỳ | Phase I dùng chu kỳ mặc định `10 phút`; chu kỳ đóng khi đủ `10 phút` hoặc khi phát sinh `Find Patient` mới |
 | 13a | ISOFHTool | Nếu chu kỳ chưa đóng thì tiếp tục nhận dữ liệu, gom các chỉ số theo rule và chỉ lưu log kỹ thuật cho dữ liệu trung gian | Gói dữ liệu chưa gửi sang HIS |
 | 13b | ISOFHTool | Khi chu kỳ đóng, Tool tạo gói dữ liệu cuối cùng của chu kỳ; nếu có dữ liệu thì gán trạng thái `Chờ gửi HIS` và gửi sang HIS kèm `Mã máy` | HIS nhận gói dữ liệu sinh hiệu của chu kỳ |
@@ -363,24 +411,25 @@
      - Tối thiểu gồm `Mã hồ sơ`, `Họ tên`, `Ngày sinh`, `Giới tính`.
      - Hiển thị thêm `Tuổi` nếu thiết bị hỗ trợ.
 8. Nhân viên y tế xác nhận đúng Người bệnh trước khi đo.
-9. Nhân viên y tế thực hiện đo sinh hiệu; Monitor gửi dữ liệu sang ISOFHTool sau khi đo xong.
-10. Tool lưu log kỹ thuật và gom dữ liệu theo chu kỳ tính từ thời điểm `Find Patient`.
+9. Nhân viên y tế thực hiện đo sinh hiệu; Monitor gửi dữ liệu sang ISOFHTool bằng bản tin HL7 `ORU^R01` sau khi đo xong.
+10. Sau khi nhận bản tin `ORU^R01`, ISOFHTool gửi phản hồi bản tin HL7 `ACK` để Monitor duy trì kết nối và tiếp tục gửi các lượt đo tiếp theo nếu có.
+11. Tool lưu log kỹ thuật và gom dữ liệu theo chu kỳ tính từ thời điểm `Find Patient`.
     - Ở Phase I, chu kỳ mặc định là `10 phút`.
     - Chu kỳ được chia theo từng đợt `Find Patient + 10 phút`, `+20 phút`, `+30 phút`...
     - Nếu phát sinh `Find Patient` mới khi chưa hết `10 phút` thì chu kỳ đang mở được đóng ngay tại thời điểm `Find Patient` mới.
     - Từ Phase II, chu kỳ mặc định lấy theo thiết lập chung.
       - Nếu Người bệnh có khai báo riêng thì ưu tiên theo khai báo riêng.
-11. Trong thời gian chu kỳ còn mở, Tool tiếp tục nhận nhiều bản tin `ORU^R01`, lưu log kỹ thuật và gom dữ liệu theo từng chỉ số; các dữ liệu trung gian chưa gửi sang HIS.
-12. Khi chu kỳ được đóng, nếu chu kỳ có dữ liệu thì Tool tạo 1 gói dữ liệu cuối cùng của chu kỳ để gửi sang HIS.
+12. Trong thời gian chu kỳ còn mở, Tool tiếp tục nhận nhiều bản tin `ORU^R01`, lưu log kỹ thuật và gom dữ liệu theo từng chỉ số; các dữ liệu trung gian chưa gửi sang HIS.
+13. Khi chu kỳ được đóng, nếu chu kỳ có dữ liệu thì Tool tạo 1 gói dữ liệu cuối cùng của chu kỳ để gửi sang HIS.
     - Với từng chỉ số, Tool chọn giá trị hợp lệ cuối cùng theo `thời điểm đo` trong bản tin HL7.
       - Ưu tiên `OBR-7`.
       - Nếu `OBR-7` trống thì fallback `OBX-14`.
     - Nếu chu kỳ chỉ có 1 bản tin đo thì gửi gói dữ liệu của bản tin đó khi đóng chu kỳ.
     - Gói dữ liệu đủ điều kiện được gán trạng thái `Chờ gửi HIS` và gửi sang HIS kèm `Mã máy`.
-13. Nếu HIS nhận được dữ liệu thì Tool cập nhật trạng thái `Đã gửi HIS`.
-14. Nếu lỗi kết nối, lỗi kỹ thuật hoặc lỗi dữ liệu khi gửi thì Tool cập nhật trạng thái `Gửi HIS lỗi`, lưu `Lý do lỗi` tại Tool và đưa vào danh sách lỗi gửi HIS.
-15. CNTT và Triển khai ISOFH theo dõi lỗi gửi HIS, kiểm tra log và thực hiện resend khi cần.
-16. Ở Phase II, `SAKURA` tổng hợp dữ liệu sinh hiệu đã ghi nhận để hiển thị Dashboard theo phạm vi Người bệnh phụ trách của Điều dưỡng hoặc Bác sĩ.
+14. Nếu HIS nhận được dữ liệu thì Tool cập nhật trạng thái `Đã gửi HIS`.
+15. Nếu lỗi kết nối, lỗi kỹ thuật hoặc lỗi dữ liệu khi gửi thì Tool cập nhật trạng thái `Gửi HIS lỗi`, lưu `Lý do lỗi` tại Tool và đưa vào danh sách lỗi gửi HIS.
+16. CNTT và Triển khai ISOFH theo dõi lỗi gửi HIS, kiểm tra log và thực hiện resend khi cần.
+17. Ở Phase II, `SAKURA` tổng hợp dữ liệu sinh hiệu đã ghi nhận để hiển thị Dashboard theo phạm vi Người bệnh phụ trách của Điều dưỡng hoặc Bác sĩ.
     - Dashboard chỉ phục vụ theo dõi tổng quan.
     - Không thay thế xem chi tiết hồ sơ điều trị.
 
@@ -464,6 +513,7 @@
 - Giai đoạn đầu, điều kiện ghép đúng Người bệnh được kiểm soát chủ yếu bằng quy trình người dùng: quét đúng `Mã hồ sơ`, đối chiếu đúng thông tin Người bệnh trên Monitor rồi mới đo.
 - `Find Patient` là thao tác bắt buộc trên Monitor để ghép đúng ngữ cảnh Người bệnh trước khi đo.
 - Tại bước `Find Patient`, Monitor gửi bản tin HL7 `QRY^A19` đến ISOFHTool; ISOFHTool chuyển tiếp sang HIS để tra cứu và parse bản tin HL7 `ADR^A19` theo dữ liệu HIS trả về để phản hồi lại Monitor.
+- Khi ISOFHTool nhận được bản tin HL7 `ORU^R01` từ Monitor thì phải phản hồi lại bản tin HL7 `ACK` để Monitor duy trì kết nối và tiếp tục gửi các lượt đo tiếp theo nếu có.
 - Khi `Find Patient` thành công, Monitor phải hiển thị đầy đủ thông tin hành chính theo dữ liệu HIS trả về; tối thiểu gồm `Mã hồ sơ`, `Họ tên`, `Ngày sinh`, `Giới tính`; nếu thiết bị hỗ trợ thì hiển thị thêm `Tuổi`. Nếu không hiển thị đủ thông tin tối thiểu thì không được đo và không được ghi nhận dữ liệu sang HIS.
 - Phase III định hướng bổ sung đối chiếu hệ thống: nếu tên hoặc ngày sinh hiển thị trên Monitor không khớp với HIS tại thời điểm đó thì đưa vào danh sách cảnh báo và hiển thị trên dashboard.
 - Dashboard Phase II trên `SAKURA` chỉ hiển thị dữ liệu theo dõi tổng quan của Người bệnh thuộc phạm vi phụ trách theo quyền được phân; không thay thế màn hình chi tiết sinh hiệu, không thay thế đánh giá lâm sàng và không thay thế quy trình ký hoặc khóa hồ sơ.
@@ -473,11 +523,14 @@
 - Mốc thời gian chuẩn để chống trùng là `thời điểm đo sinh hiệu`, không dùng thời điểm Tool nhận bản tin.
 - Chu kỳ ghi nhận sinh hiệu được tính từ thời điểm `Find Patient`.
   - Phase I dùng chu kỳ mặc định `10 phút`.
+  - Phase I tập trung kết nối `05` chỉ số sống cơ bản gồm `Mạch`, `Nhiệt độ`, `Huyết áp`, `Nhịp thở`, `SpO2`.
+    - Riêng chỉ số `Nhiệt độ` cần kiểm tra lại thiết bị pilot có hỗ trợ hay không.
   - Ở Phase I, chu kỳ được chia theo từng đợt `10 phút` tính từ thời điểm `Find Patient`, ví dụ `T0 -> T0+10 phút`, `T0+10 phút -> T0+20 phút`, `T0+20 phút -> T0+30 phút`.
   - Nếu phát sinh `Find Patient` mới khi chu kỳ hiện tại chưa kết thúc thì chu kỳ cũ được đóng tại thời điểm `Find Patient` mới.
   - Từ Phase II, chu kỳ mặc định lấy theo `Thiết lập chung`.
     - Nếu Người bệnh có khai báo chu kỳ riêng thì ưu tiên lấy theo khai báo của Người bệnh.
     - Nếu không có thì lấy theo `Thiết lập chung`.
+  - Từ Phase II, mở rộng thu thập thêm các dữ liệu khác ngoài `05` chỉ số sống cơ bản của Phase I.
   - Trong cùng 1 chu kỳ, Tool gom nhiều bản tin `ORU^R01` thành 1 gói dữ liệu duy nhất để gửi sang HIS khi chu kỳ đóng.
     - Nếu chu kỳ chỉ có 1 bản tin đo thì gửi gói dữ liệu của bản tin đó khi chu kỳ được đóng.
     - Với từng chỉ số trong cùng chu kỳ, Tool chọn giá trị hợp lệ cuối cùng theo `thời điểm đo`; ưu tiên `OBR-7`, nếu `OBR-7` trống thì fallback `OBX-14`.
@@ -488,6 +541,7 @@
 - Nếu bản ghi đến trễ làm thay đổi gói dữ liệu cuối cùng hợp lệ của chu kỳ thì Tool phải cho phép resend để cập nhật lại dữ liệu trên HIS.
 - Nếu không `Find Patient` được Người bệnh thì Điều dưỡng có thể chuyển `New Patient` trên Monitor để đo dữ liệu trắng; dữ liệu này không gắn Người bệnh trên HIS và xử lý theo quy trình tay.
 - Dữ liệu trắng vẫn đi vào ISOFHTool nhưng chỉ lưu log kỹ thuật và bảng lỗi với `Lý do lỗi = Không có Mã hồ sơ`; không gửi sang HIS.
+- Phase I dùng lại API `SAKURA` hiện có để ISOFHTool lấy thông tin Người bệnh và cập nhật `05` chỉ số sống cơ bản; phía BE không phải làm thêm API mới trong phase này.
 - Giai đoạn đầu chưa giới hạn thời gian hiệu lực của một lần ghép Người bệnh trên Monitor.
 - Nếu HIS đã nhận được dữ liệu nhưng tự xử lý trùng bên trong HIS thì trạng thái giao dịch ở Tool vẫn là `Đã gửi HIS`.
 - Sai `Mã máy` không được xem là lỗi gửi HIS nếu HIS vẫn nhận được dữ liệu; trường hợp này cần đối soát mapping chứ không cần resend dữ liệu, và giai đoạn triển khai ban đầu chưa yêu cầu sửa hồi cứu trên HIS.
@@ -529,6 +583,7 @@
 | Danh mục Mã máy trên HIS           | Quản lý `Mã máy` dùng để lưu truy vết với bản ghi sinh hiệu                 | Có       | Có                      | - Trên HIS đã có danh mục mã máy<br>- HIS chỉ làm thêm lưu `Mã máy` cùng bản ghi sinh hiệu |
 | Cấu hình kết nối Monitor trên Tool | Cấu hình IP và tham số kết nối để Tool lắng nghe dữ liệu từ Monitor         | Có       | Có                      | Nếu thiết bị đổi IP thì phải cập nhật lại cấu hình kết nối                                 |
 | Cấu hình `Mã máy` trên Tool        | Gắn thiết bị thực tế với `Mã máy` trên HIS                                  | Có       | Có                      | Giai đoạn đầu nhập tay `Mã máy`, chưa cần gọi API lấy danh mục                             |
+| Danh sách ghép chỉ số sống         | Mapping giữa chỉ số sống của `SAKURA` và chỉ số gửi từ Monitor              | Có       | Có                      | Phase I trước mắt tập trung `05` chỉ số cơ bản; mapping chi tiết chốt ở tài liệu detail    |
 | Cấu hình chu kỳ ghi nhận           | Phase I dùng mặc định `10 phút`; Phase II cấu hình qua `Thiết lập chung`, và nếu có khai báo riêng theo từng Người bệnh thì ưu tiên lấy theo khai báo riêng | Có | Có | Không cần lấy chu kỳ qua API `Find Patient` ở Phase I |
 | Cấu hình retry / resend            | Số lần retry, thao tác resend, quy tắc đổi trạng thái | Có       | Có                      | Phase I bắt buộc có resend thủ công theo từng giao dịch lỗi; resend theo lô không bắt buộc để nghiệm thu Phase I và có thể chuyển sang Phase II |
 | Phân quyền trên HIS                | Quyền xem dữ liệu sinh hiệu, quyền xem màn hình nghiệp vụ, quyền cấu hình chu kỳ mặc định hoặc khai báo chu kỳ riêng theo từng Người bệnh ở Phase II | Có | Có | HIS tạo quyền để phân cho người dùng phù hợp |
@@ -544,7 +599,7 @@
 | Dữ liệu sinh hiệu | Tạo mới | HIS nhận gói dữ liệu sinh hiệu hợp lệ từ Tool |
 | Dữ liệu sinh hiệu | Chống trùng / bỏ qua / resend | HIS chống trùng theo `Mã hồ sơ + thời điểm đo sinh hiệu`; Tool bỏ qua các chỉ số hoặc bản tin trung gian không được chọn vào gói dữ liệu cuối cùng của chu kỳ; bản ghi đến trễ có thể làm phát sinh resend |
 | Dữ liệu phân công hoặc phạm vi phụ trách Người bệnh | Chỉ đọc / tổng hợp | Dashboard trên `SAKURA` dùng dữ liệu phân công hoặc phạm vi được phép xem để xác định danh sách Người bệnh cần theo dõi; nguồn xác định cụ thể cần chốt ở tài liệu detail |
-| Dữ liệu sinh hiệu chi tiết | Tạo mới | Giai đoạn đầu lưu các trường:<br>- HR: Nhịp tim (Heart Rate)<br>- SpO2: Độ bão hòa oxy trong máu ngoại vi (Peripheral Oxygen Saturation)<br>- RR: Nhịp thở (Respiratory Rate)<br>- TEMP: Nhiệt độ cơ thể (Body Temperature)<br>- NIPB SYS: Huyết áp tâm thu không xâm lấn (Non-Invasive Blood Pressure Systolic)<br>- NIPB DIA: Huyết áp tâm trương không xâm lấn (Non-Invasive Blood Pressure Diastolic)<br>- MAP: Huyết áp động mạch trung bình (Mean Arterial Pressure)<br>- PI: Chỉ số tưới máu (Perfusion Index) |
+| Dữ liệu sinh hiệu chi tiết | Tạo mới | Phase I trước mắt lưu `05` nhóm chỉ số sống cơ bản:<br>- Mạch<br>- Nhiệt độ<br>  - Cần kiểm tra lại thiết bị pilot có hỗ trợ hay không<br>- Huyết áp<br>- Nhịp thở<br>- SpO2<br>- Phase II mở rộng thêm các chỉ số khác và chốt mapping chi tiết ở tài liệu detail |
 | Dữ liệu tổng hợp hiển thị Dashboard | Tạo mới / tổng hợp | `SAKURA` tổng hợp thời điểm đo gần nhất, trạng thái nhận dữ liệu, chỉ số cần theo dõi và cờ bất thường để hiển thị mức tổng quan; chi tiết trường hiển thị cần tách xuống tài liệu detail |
 | `Mã máy` | Tạo mới / lưu kèm | HIS chỉ lưu `Mã máy` kèm bản ghi sinh hiệu để truy vết thiết bị; giai đoạn triển khai ban đầu chưa yêu cầu sửa hồi cứu nếu mapping sai |
 | Giao dịch gửi HIS | Tạo mới / cập nhật | Quản lý trạng thái `Chờ gửi HIS`, `Đã gửi HIS`, `Gửi HIS lỗi` |
@@ -568,9 +623,10 @@
 
 | Hệ thống | Chiều dữ liệu | Trigger | Dữ liệu chính | Ghi chú |
 | --- | --- | --- | --- | --- |
-| Monitor PVM-2701 -> ISOFHTool | Gửi | Kiểm tra ngữ cảnh Người bệnh trên Monitor, chuyển `New Patient` nếu đang có Người bệnh cũ, quét `Mã hồ sơ`, chọn `Find Patient`, hoàn tất đo | Yêu cầu tìm Người bệnh, dữ liệu sinh hiệu, thông tin nhận diện thiết bị | Tool lắng nghe kết nối từ Monitor theo IP; định dạng bản tin detail sẽ tách tài liệu sau |
-| ISOFHTool -> HIS | Gửi / Nhận | Tìm Người bệnh, gửi gói dữ liệu sinh hiệu, retry, resend | `Mã hồ sơ`, thông tin Người bệnh, dữ liệu sinh hiệu, `Mã máy`, trạng thái giao dịch | Phase I chưa cần HIS trả chu kỳ qua API `Find Patient`; nếu bản ghi đến trễ làm thay đổi gói dữ liệu cuối cùng của chu kỳ thì Tool cho phép resend |
-| HIS -> ISOFHTool | Nhận | Tool gọi tra cứu `Mã hồ sơ` | Thông tin Người bệnh | HIS chỉ trả thông tin khi `Mã hồ sơ` thuộc lượt hoặc đợt điều trị có trạng thái `< Đã ra viện (100)` |
+| Monitor PVM-2701 -> ISOFHTool | Gửi | Kiểm tra ngữ cảnh Người bệnh trên Monitor, chuyển `New Patient` nếu đang có Người bệnh cũ, quét `Mã hồ sơ`, chọn `Find Patient`, hoàn tất đo | Yêu cầu tìm Người bệnh `QRY^A19`, dữ liệu sinh hiệu `ORU^R01`, thông tin nhận diện thiết bị | Tool lắng nghe kết nối từ Monitor theo `IP`, `PORT`; định dạng bản tin detail sẽ tách tài liệu sau |
+| ISOFHTool -> Monitor | Gửi | Phản hồi sau tra cứu Người bệnh hoặc sau khi nhận bản tin đo | `ADR^A19`, `ACK` | `ACK` được gửi sau khi nhận `ORU^R01` để Monitor duy trì kết nối và tiếp tục gửi dữ liệu |
+| ISOFHTool -> HIS | Gửi / Nhận | Tìm Người bệnh, gửi gói dữ liệu sinh hiệu, retry, resend | `Mã hồ sơ`, thông tin Người bệnh, dữ liệu sinh hiệu, `Mã máy`, trạng thái giao dịch | Phase I dùng lại API `SAKURA` hiện có; chưa cần HIS trả chu kỳ qua API `Find Patient`; nếu bản ghi đến trễ làm thay đổi gói dữ liệu cuối cùng của chu kỳ thì Tool cho phép resend |
+| HIS -> ISOFHTool | Nhận | Tool gọi tra cứu `Mã hồ sơ` qua API `nbDotDieuTriId` | Thông tin Người bệnh | HIS chỉ trả thông tin khi `Mã hồ sơ` thuộc lượt hoặc đợt điều trị có trạng thái `< Đã ra viện (100)` |
 | ISOFHTool <-> HIS | Hai chiều | Gửi gói dữ liệu sinh hiệu, nhận phản hồi xử lý, theo dõi lỗi gửi, resend | Trạng thái gửi HIS, `Lý do lỗi`, log gửi nhận | Sai `Mã máy` không mặc định là lỗi resend nếu HIS vẫn nhận dữ liệu; dữ liệu trắng không gửi sang HIS |
 | HIS / `SAKURA` | Nội bộ hệ thống / hiển thị | Người dùng mở Dashboard theo dõi tổng quan | Danh sách Người bệnh phụ trách, thời điểm đo gần nhất, trạng thái tổng quan, cờ bất thường theo rule hiển thị | Chưa xác định ở mức high level Dashboard đọc trực tiếp từ HIS hay qua lớp tổng hợp riêng; cần chốt trong tài liệu detail |
 
@@ -598,6 +654,7 @@ OBX|3|NM|009002^NIBP MEAN|1|95|mmHg|||||F|||20260422184337|||
 | `PID-3` | Mã định danh Người bệnh / `Mã hồ sơ` được Monitor gửi trong bản tin | Cần chốt mapping chi tiết ở tài liệu detail |
 | `QRY^A19` | Bản tin tra cứu Người bệnh từ Monitor sang ISOFHTool | Dùng tại bước `Find Patient` |
 | `ADR^A19` | Bản tin phản hồi thông tin hành chính từ ISOFHTool về Monitor theo dữ liệu HIS trả về | Cần chốt mapping chi tiết ở tài liệu detail |
+| `ACK` | Bản tin xác nhận ISOFHTool đã nhận `ORU^R01` từ Monitor | Dùng để Monitor duy trì kết nối và tiếp tục gửi dữ liệu |
 | `OBR-7` | Thời điểm đo của nhóm chỉ số | Là nguồn thời gian tham chiếu cho từng nhóm kết quả trong bản tin |
 | `OBX-14` | Thời điểm đo của chỉ số nếu có gửi kèm ở mức OBX | Dùng để xử lý bản ghi đến trễ khi thiết bị gửi thời gian ở mức chỉ số |
 | `OBX-3` | Mã chỉ số sinh hiệu | Ví dụ mẫu hiện có các mã PR, SpO2, rPR, SYS, DIAS, MEAN |
@@ -710,7 +767,9 @@ Ghi chú: UAT pilot tập trung các case cơ bản. Các case ngoại lệ và 
 - Chỉ tìm được Người bệnh trên Monitor khi `Mã hồ sơ` thuộc lượt hoặc đợt điều trị có trạng thái `< Đã ra viện (100)`; Monitor gửi bản tin HL7 `QRY^A19`, ISOFHTool parse bản tin HL7 `ADR^A19` từ dữ liệu HIS trả về và Monitor hiển thị tối thiểu `Mã hồ sơ`, `Họ tên`, `Ngày sinh`, `Giới tính`, và `Tuổi` nếu thiết bị hỗ trợ.
 - Nếu `Mã hồ sơ` không tồn tại hoặc đã ở trạng thái `Đã ra viện (100)` thì HIS không trả thông tin Người bệnh.
 - ISOFHTool nhận được dữ liệu đo từ thiết bị.
+- Sau khi nhận bản tin `ORU^R01`, ISOFHTool phải phản hồi bản tin HL7 `ACK` để Monitor tiếp tục duy trì kết nối và gửi các lượt đo tiếp theo nếu có.
 - HIS lưu được đúng dữ liệu đo sinh hiệu theo `Mã hồ sơ` đã đo.
+- Phase I trước mắt ghi nhận `05` chỉ số sống cơ bản gồm `Mạch`, `Nhiệt độ`, `Huyết áp`, `Nhịp thở`, `SpO2`.
 - Phase I áp dụng chu kỳ mặc định `10 phút` để lọc gói dữ liệu gửi HIS.
 - Chu kỳ Phase I được đóng sau mỗi `10 phút` tính từ thời điểm `Find Patient`; nếu phát sinh `Find Patient` mới trước khi hết `10 phút` thì chu kỳ cũ phải được đóng ngay.
 - Nếu trong 1 chu kỳ chỉ có 1 bản tin đo thì hệ thống phải gửi gói dữ liệu của bản tin đó khi chu kỳ kết thúc.
@@ -743,6 +802,7 @@ Ghi chú: UAT pilot tập trung các case cơ bản. Các case ngoại lệ và 
 | Dashboard tổng quan Người bệnh phụ trách trên `SAKURA` | Có | SRS detail - Dashboard tổng quan sinh hiệu trên `SAKURA` | Cần mô tả nguồn xác định Người bệnh phụ trách, bộ chỉ số hiển thị, rule gắn cờ bất thường, cách điều hướng sang màn hình chi tiết |
 | Màn hình cấu hình chu kỳ ghi nhận sinh hiệu | Có | SRS detail - Cấu hình chu kỳ ghi nhận sinh hiệu | Cần mô tả `Thiết lập chung`, khai báo riêng theo từng Người bệnh ở Phase II và quyền thao tác |
 | API tìm Người bệnh và API gửi dữ liệu sinh hiệu | Có | Tài liệu detail tích hợp / mapping | Cần mô tả payload, mã lỗi, timeout, retry |
+| Danh sách ghép `Chỉ số sống SAKURA - Chỉ số sống Monitor` | Có | Tài liệu detail mapping chỉ số sống | Cần mô tả mapping cho `05` chỉ số Phase I, quy tắc chuẩn hóa đơn vị và hướng mở rộng Phase II |
 | Mapping `Mã máy` với cấu hình thiết bị trên Tool và Danh mục Mã máy trên HIS | Có | Tài liệu detail mapping `Mã máy` | Cần mô tả cấu hình IP, trường nhập `Mã máy`, quy trình kiểm tra sau cấu hình |
 | Rule lọc bản ghi theo chu kỳ | Có | SRS detail - Rule lọc sinh hiệu theo chu kỳ | Cần mô tả rõ gói dữ liệu cuối cùng, chỉ số bị bỏ qua, log kỹ thuật |
 | Rule trạng thái giao dịch gửi HIS và resend | Có | SRS detail - Theo dõi transaction lỗi gửi HIS | Cần mô tả lỗi kết nối, số lần retry mặc định, resend thủ công theo từng giao dịch lỗi và phạm vi resend theo lô nếu phát sinh ở phase sau |
@@ -758,12 +818,13 @@ Ghi chú: UAT pilot tập trung các case cơ bản. Các case ngoại lệ và 
 | 3 | Rủi ro | Nếu cấu hình `Mã máy` sai, HIS vẫn nhận dữ liệu nhưng không truy vết đúng thiết bị, dễ gây khó đối soát. | Cao | Checklist kiểm tra mapping `Mã máy` ngay sau cấu hình Tool và test dữ liệu đầu vào. Phụ trách: CNTT / Triển khai / BA |
 | 4 | Rủi ro | Khi HIS hoặc Tool lỗi ở bước tra cứu Người bệnh, Cơ sở y tế phải chuyển sang nhập tay, dễ phát sinh thao tác kép. | Vừa | Chuẩn hóa tài liệu vận hành và hướng dẫn người dùng trước go-live. Phụ trách: BA / Triển khai |
 | 5 | Rủi ro | Phase I chưa có user-level permission trên ISOFHTool nên khả năng kiểm soát ai xem log kỹ thuật và ai thao tác resend phụ thuộc vào việc quản lý máy server dùng riêng. | Vừa | Kiểm soát vật lý và tài khoản truy cập máy server; đánh giá bổ sung phân quyền chi tiết ở phase sau. Phụ trách: CNTT / Triển khai / PO |
-| 6 | Assumption cần xác nhận | Một máy trung tâm trong pilot dự kiến phục vụ nhỏ hơn 10 Monitor. | Vừa | Xác nhận lại với MEDI Plus trước triển khai. Phụ trách: Triển khai / CNTT |
+| 6 | Assumption cần xác nhận | Một máy trung tâm trong pilot dự kiến phục vụ `05` thiết bị và được định hướng nhỏ hơn `10` Monitor. | Vừa | Xác nhận lại với MEDI Plus trước triển khai. Phụ trách: Triển khai / CNTT |
 | 7 | Assumption cần xác nhận | Khi máy trung tâm dừng hoạt động, cần xác nhận Monitor có khả năng lưu dữ liệu hay không. | Cao | Làm việc với hãng thiết bị và Cơ sở y tế để chốt phương án dự phòng. Phụ trách: Triển khai / Đơn vị thiết bị / CNTT |
-| 8 | Câu hỏi mở | Ticket / CR / Jira liên quan là gì. | Thấp | Bổ sung thông tin hành chính tài liệu. Phụ trách: BA / PO |
-| 9 | Câu hỏi mở | Thời gian giữ log kỹ thuật và bảng lỗi của dữ liệu trắng hoặc bản ghi lỗi trên ISOFHTool là bao lâu. | Vừa | Chốt cùng đội triển khai và CNTT trước khi ban hành tài liệu vận hành pilot. Phụ trách: BA / Triển khai / CNTT |
-| 10 | Câu hỏi mở | Rule xác định `Người bệnh mình phụ trách` trên Dashboard `SAKURA` sẽ theo Bác sĩ điều trị, Điều dưỡng phụ trách, khoa/phòng, buồng/giường hay ca trực. | Cao | Chốt với nghiệp vụ và đội sản phẩm trước khi xuống detail. Phụ trách: BA / PO / Cơ sở y tế |
-| 11 | Câu hỏi mở | Rule gắn cờ `bất thường` trên Dashboard `SAKURA` dùng ngưỡng chung, ngưỡng theo khoa/phòng hay ngưỡng riêng theo Người bệnh. | Cao | Chốt rule hiển thị và cấu hình trước khi thiết kế Dashboard chi tiết. Phụ trách: BA / PO / Chuyên môn |
+| 8 | Câu hỏi mở | Thiết bị pilot có hỗ trợ chỉ số `Nhiệt độ` để đưa vào phạm vi `05` chỉ số sống Phase I hay không. | Vừa | Xác nhận lại với đơn vị thiết bị và MEDI Plus trước khi chốt detail mapping. Phụ trách: BA / Triển khai / Đơn vị thiết bị |
+| 9 | Câu hỏi mở | Ticket / CR / Jira liên quan là gì. | Thấp | Bổ sung thông tin hành chính tài liệu. Phụ trách: BA / PO |
+| 10 | Câu hỏi mở | Thời gian giữ log kỹ thuật và bảng lỗi của dữ liệu trắng hoặc bản ghi lỗi trên ISOFHTool là bao lâu. | Vừa | Chốt cùng đội triển khai và CNTT trước khi ban hành tài liệu vận hành pilot. Phụ trách: BA / Triển khai / CNTT |
+| 11 | Câu hỏi mở | Rule xác định `Người bệnh mình phụ trách` trên Dashboard `SAKURA` sẽ theo Bác sĩ điều trị, Điều dưỡng phụ trách, khoa/phòng, buồng/giường hay ca trực. | Cao | Chốt với nghiệp vụ và đội sản phẩm trước khi xuống detail. Phụ trách: BA / PO / Cơ sở y tế |
+| 12 | Câu hỏi mở | Rule gắn cờ `bất thường` trên Dashboard `SAKURA` dùng ngưỡng chung, ngưỡng theo khoa/phòng hay ngưỡng riêng theo Người bệnh. | Cao | Chốt rule hiển thị và cấu hình trước khi thiết kế Dashboard chi tiết. Phụ trách: BA / PO / Chuyên môn |
 
 ## 18. Tài liệu tham chiếu
 
@@ -790,5 +851,6 @@ Ghi chú: UAT pilot tập trung các case cơ bản. Các case ngoại lệ và 
 
 - Ticket / CR / Jira liên quan.
 - Xác nhận số lượng Monitor thực tế trong pilot tại MEDI Plus.
+- Xác nhận thiết bị pilot có hỗ trợ chỉ số `Nhiệt độ` hay không.
 - Xác nhận khả năng lưu dữ liệu của Monitor khi máy trung tâm dừng hoạt động.
 - Chốt thời gian giữ log kỹ thuật và bảng lỗi trên ISOFHTool.

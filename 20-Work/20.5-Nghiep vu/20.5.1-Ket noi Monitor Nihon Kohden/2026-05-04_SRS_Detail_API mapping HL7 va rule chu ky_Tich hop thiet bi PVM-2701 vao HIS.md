@@ -12,7 +12,7 @@ tags:
   - hl7
 ---
 
-# [SRS Detail] API, mapping HL7 và rule chu kỳ - Tích hợp thiết bị PVM-2701 vào HIS
+# [SRS Detail] Nhận dữ liệu sinh hiệu từ Monitor và chuyển cho SAKURA - API, mapping HL7, ACK và rule chu kỳ - Tích hợp thiết bị PVM-2701 vào HIS
 
 | Thuộc tính | Nội dung |
 | --- | --- |
@@ -30,12 +30,10 @@ tags:
 
 ## 1. Tóm tắt
 
-- Tài liệu này đặc tả chi tiết cho 3 hạng mục đã tách từ tài liệu high level:
-  - API `Find Patient` giữa ISOFHTool và HIS.
-  - API gửi dữ liệu sinh hiệu từ ISOFHTool sang HIS và mapping từ bản tin HL7 của Monitor.
-  - Rule chu kỳ ghi nhận sinh hiệu, xử lý gói dữ liệu cuối cùng, bản ghi đến trễ, retry và resend.
-- Tại bước `Find Patient`, Monitor gửi bản tin HL7 `QRY^A19` đến ISOFHTool; ISOFHTool chuyển tiếp tra cứu sang HIS, nhận thông tin hành chính Người bệnh từ HIS, sau đó parse và trả về Monitor theo bản tin HL7 `ADR^A19`.
-- Tại bước gửi dữ liệu sinh hiệu, Monitor gửi bản tin HL7 `ORU^R01` sang ISOFHTool; Tool lấy `thời điểm đo` từ `OBR-7` hoặc `OBX-14` theo rule tại mục 9 và 10 để gom dữ liệu theo chu kỳ rồi gửi sang HIS.
+- Tài liệu này đặc tả chi tiết cho luồng nhận dữ liệu sinh hiệu từ Monitor, phản hồi `ACK`, chuẩn hóa dữ liệu HL7, áp rule chu kỳ và gọi API cập nhật sinh hiệu sang `SAKURA`.
+- Tại bước gửi dữ liệu sinh hiệu, Monitor gửi bản tin HL7 `ORU^R01` sang ISOFHTool; Tool phản hồi lại bản tin HL7 `ACK`, lấy `thời điểm đo` từ `OBR-7` hoặc `OBX-14` theo rule tại mục 9 và 10 để gom dữ liệu theo chu kỳ rồi gửi sang `SAKURA`.
+- Luồng `Find Patient` đã được tách sang tài liệu riêng: `2026-05-16_SRS_Detail_Nhan yeu cau gui thong tin NB va tra thong tin cho Monitor_Tich hop thiet bi PVM-2701 vao HIS.md`.
+- Danh sách ghép chỉ số sống được tách sang tài liệu riêng: `2026-05-16_SRS_Detail_Danh sach ghep Chi so song SAKURA - Chi so song Monitor_Tich hop thiet bi PVM-2701 vao HIS.md`.
 - Tài liệu này phục vụ handover cho DEV, QA, BA và triển khai ở mức detail.
 - Tài liệu này chưa chốt tên endpoint kỹ thuật thật, tên bảng DB, enum kỹ thuật, text message hiển thị cuối cùng cho người dùng. Các phần đó được đánh dấu `[Cần xác nhận]` nếu chưa có căn cứ.
 
@@ -54,9 +52,9 @@ tags:
 
 ### 3.1. Bao gồm
 
-- Đặc tả payload nghiệp vụ tối thiểu cho API `Find Patient`.
 - Đặc tả payload nghiệp vụ tối thiểu cho API gửi dữ liệu sinh hiệu vào HIS.
 - Đặc tả mapping các thành phần HL7 cần dùng từ Monitor PVM-2701.
+- Đặc tả rule phản hồi `ACK` sau khi ISOFHTool nhận `ORU^R01`.
 - Đặc tả rule chu kỳ `10 phút` của Phase I.
 - Đặc tả rule chọn gói dữ liệu cuối cùng trong chu kỳ.
 - Đặc tả xử lý bản ghi đến trễ theo `OBR-7` hoặc `OBX-14` của cùng `PID-3`.
@@ -75,11 +73,8 @@ tags:
 
 | Loại | Nội dung | Trạng thái |
 | --- | --- | --- |
-| Fact | `Find Patient` là thao tác bắt buộc trên Monitor để ghép đúng ngữ cảnh Người bệnh trước khi đo. | Đã rõ |
-| Fact | Tại bước `Find Patient`, Monitor gửi bản tin HL7 `QRY^A19` đến ISOFHTool; ISOFHTool chuyển tiếp sang HIS để tra cứu. | Đã rõ |
-| Fact | HIS phản hồi thông tin hành chính đầy đủ của Người bệnh cho ISOFHTool; ISOFHTool parse bản tin HL7 `ADR^A19` theo dữ liệu HIS trả về để gửi lại Monitor. | Đã rõ |
 | Fact | Bản tin sinh hiệu Monitor gửi sang Tool là HL7 `ORU^R01`. | Đã rõ |
-| Fact | HIS chỉ trả thông tin khi `Mã hồ sơ` thuộc lượt hoặc đợt điều trị có trạng thái `< Đã ra viện (100)`. | Đã rõ |
+| Fact | Khi ISOFHTool nhận được bản tin HL7 `ORU^R01` từ Monitor thì phải phản hồi lại bản tin HL7 `ACK` để Monitor duy trì kết nối và tiếp tục gửi các bản tin tiếp theo nếu có. | Đã rõ |
 | Fact | Chu kỳ ghi nhận sinh hiệu ở Phase I là `10 phút`, tính từ thời điểm `Find Patient`. | Đã rõ |
 | Fact | Mỗi lần `Find Patient` thành công sẽ mở một chu kỳ mới; nếu đang có chu kỳ mở thì chu kỳ cũ đóng tại thời điểm `Find Patient` mới. | Đã rõ |
 | Fact | Trong cùng một chu kỳ, Tool gom nhiều bản tin `ORU^R01` thành 1 gói dữ liệu gửi HIS; mỗi chỉ số lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn trong chu kỳ. | Đã rõ |
@@ -87,7 +82,7 @@ tags:
 | Fact | Bản ghi đến trễ được xử lý theo `OBR-7` hoặc `OBX-14` của cùng `PID-3`, vẫn nhận vào chu kỳ đã đóng và cho phép resend nếu làm thay đổi gói dữ liệu cuối cùng đã gửi. | Đã rõ |
 | Fact | Dữ liệu trắng vẫn đi vào Tool nhưng chỉ lưu log kỹ thuật và bảng lỗi với `Lý do lỗi = Không có Mã hồ sơ`, không gửi sang HIS. | Đã rõ |
 | Fact | Phase I: lỗi kết nối retry tự động `3 lần`; lỗi dữ liệu không retry tự động. | Đã rõ |
-| Fact | Theo bản tin mẫu `QRY^A19`, `Mã hồ sơ` được gửi ở `QRD-8`; theo bản tin mẫu `ADR^A19`, thông tin Người bệnh trả về ở `PID`. | Đã rõ |
+| Fact | Phase I trước mắt tập trung `05` nhóm chỉ số sống cơ bản: `Mạch`, `Nhiệt độ`, `Huyết áp`, `Nhịp thở`, `SpO2`. | Đã rõ |
 | Constraint | Giai đoạn đầu ưu tiên pilot nhanh, hạn chế thay đổi lớn về hạ tầng. | Đã rõ |
 | Constraint | Không được làm mất dữ liệu đã nhận từ Monitor khi HIS lỗi tạm thời. | Đã rõ |
 | Open question | Tên endpoint thật, phương thức HTTP thật, cơ chế auth thật giữa Tool và HIS là gì. | Mở |
@@ -96,38 +91,25 @@ tags:
 
 ## 5. Luồng xử lý
 
-### 5.1. Luồng 1 - `Find Patient`
-
-| Bước | Tác nhân | Mô tả xử lý | Kết quả |
-| --- | --- | --- | --- |
-| 1 | Điều dưỡng | Quét barcode `Mã hồ sơ` trên Monitor | Monitor có giá trị `Mã hồ sơ` để tra cứu |
-| 2 | Điều dưỡng | Chọn `Find Patient` trên Monitor | Monitor gửi bản tin HL7 `QRY^A19` sang ISOFHTool |
-| 3 | ISOFHTool | Nhận bản tin `QRY^A19`, parse giá trị `Mã hồ sơ` và chuyển tiếp yêu cầu tra cứu sang HIS | HIS nhận yêu cầu tra cứu |
-| 4 | HIS | Kiểm tra `Mã hồ sơ` có tồn tại và thuộc lượt hoặc đợt điều trị có trạng thái `< Đã ra viện (100)` hay không | Có hoặc không có kết quả hợp lệ |
-| 5a | HIS | Nếu hợp lệ, trả thông tin hành chính đầy đủ của Người bệnh cho ISOFHTool | ISOFHTool nhận thông tin hợp lệ |
-| 5b | HIS | Nếu không hợp lệ, không trả thông tin Người bệnh | ISOFHTool nhận kết quả không tìm thấy |
-| 6a | ISOFHTool | Dựa trên dữ liệu HIS trả về, parse bản tin HL7 `ADR^A19` và trả kết quả về Monitor | Monitor nhận bản tin phản hồi `ADR^A19` |
-| 6b | Monitor | Hiển thị đầy đủ thông tin hành chính Người bệnh theo dữ liệu nhận từ HIS | Hiển thị tối thiểu `Mã hồ sơ`, `Họ tên`, `Ngày sinh`, `Giới tính`; các thông tin khác như `Tuổi` hiển thị theo khả năng của thiết bị và dữ liệu trả về |
-| 6c | Điều dưỡng | Đối chiếu đúng Người bệnh rồi mới đo | Được tiếp tục quy trình đo |
-| 6d | Điều dưỡng | Nếu không có kết quả hoặc hiển thị thiếu thông tin | Không được đo theo luồng tự động; chuyển quy trình tay |
-
-### 5.2. Luồng 2 - Nhận bản tin HL7 và áp rule chu kỳ
+### 5.1. Luồng 1 - Nhận bản tin HL7, phản hồi `ACK` và áp rule chu kỳ
 
 | Bước | Tác nhân | Mô tả xử lý | Kết quả |
 | --- | --- | --- | --- |
 | 1 | Monitor | Gửi bản tin HL7 sang ISOFHTool sau khi đo | Tool nhận bản tin |
 | 2 | ISOFHTool | Parse bản tin HL7 `ORU^R01`, đọc `PID-3`, `OBR-7`, `OBX-14`, `OBX-3`, `OBX-5`, `OBX-6` | Có dữ liệu đầu vào để xử lý |
-| 3 | ISOFHTool | Xác định `Mã hồ sơ` từ `PID-3` | Biết ngữ cảnh Người bệnh hoặc xác định dữ liệu trắng |
-| 4a | ISOFHTool | Nếu không có `PID-3` hoặc không xác định được `Mã hồ sơ` hợp lệ theo luồng đang mở | Ghi log kỹ thuật và bảng lỗi với `Lý do lỗi = Không có Mã hồ sơ`; không gửi HIS |
-| 4b | ISOFHTool | Nếu có `PID-3`, xác định `thời điểm đo` chuẩn theo rule ưu tiên `OBR-7`, fallback `OBX-14` ở mục 9 | Có thời điểm đo chuẩn để vào chu kỳ |
-| 5 | ISOFHTool | Xác định chu kỳ theo `Mã hồ sơ` và thời điểm `Find Patient` thành công gần nhất; mỗi lần `Find Patient` thành công mở một chu kỳ mới | Bản tin được gán vào đúng chu kỳ đang mở hoặc chu kỳ cũ nếu là bản ghi đến trễ |
-| 6 | ISOFHTool | Gom các bản tin của cùng chu kỳ thành 1 gói dữ liệu; với từng chỉ số, giữ giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn, nếu trùng `thời điểm đo` thì lấy bản tin Tool nhận sau cùng | Có tập chỉ số cuối cùng của chu kỳ |
-| 7 | ISOFHTool | Khi chu kỳ đóng, tạo 1 giao dịch `Chờ gửi HIS` chứa toàn bộ các chỉ số cuối cùng hợp lệ của chu kỳ | Có transaction sẵn sàng gửi HIS |
-| 8 | ISOFHTool | Gửi 1 gói dữ liệu tổng hợp sang HIS kèm `Mã máy`, `thời điểm đo` gói và danh sách chỉ số đã gom | HIS nhận bản ghi sinh hiệu |
-| 9a | HIS | Nhận thành công | Tool cập nhật `Đã gửi HIS` |
-| 9b | HIS / Tool | Lỗi kết nối hoặc lỗi dữ liệu | Tool cập nhật `Gửi HIS lỗi` theo rule phase |
+| 3 | ISOFHTool | Trả bản tin HL7 `ACK` cho Monitor sau khi nhận và parse được bản tin ở mức tối thiểu để tiếp tục xử lý | Monitor duy trì kết nối và tiếp tục gửi dữ liệu nếu có |
+| 4 | ISOFHTool | Xác định `Mã hồ sơ` từ `PID-3` | Biết ngữ cảnh Người bệnh hoặc xác định dữ liệu trắng |
+| 5a | ISOFHTool | Nếu không có `PID-3` hoặc không xác định được `Mã hồ sơ` hợp lệ theo luồng đang mở | Ghi log kỹ thuật và bảng lỗi với `Lý do lỗi = Không có Mã hồ sơ`; không gửi HIS |
+| 5b | ISOFHTool | Nếu có `PID-3`, xác định `thời điểm đo` chuẩn theo rule ưu tiên `OBR-7`, fallback `OBX-14` ở mục 9 | Có thời điểm đo chuẩn để vào chu kỳ |
+| 6 | ISOFHTool | Xác định chu kỳ theo `Mã hồ sơ` và thời điểm `Find Patient` thành công gần nhất; mỗi lần `Find Patient` thành công mở một chu kỳ mới | Bản tin được gán vào đúng chu kỳ đang mở hoặc chu kỳ cũ nếu là bản ghi đến trễ |
+| 7 | ISOFHTool | Dùng danh sách ghép chỉ số sống đang hiệu lực để xác định chỉ số nào được gửi `SAKURA`, chỉ số nào chỉ log kỹ thuật | Có bộ chỉ số đủ điều kiện cho chu kỳ |
+| 8 | ISOFHTool | Gom các bản tin của cùng chu kỳ thành 1 gói dữ liệu; với từng chỉ số, giữ giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn, nếu trùng `thời điểm đo` thì lấy bản tin Tool nhận sau cùng | Có tập chỉ số cuối cùng của chu kỳ |
+| 9 | ISOFHTool | Khi chu kỳ đóng, tạo 1 giao dịch `Chờ gửi HIS` chứa toàn bộ các chỉ số cuối cùng hợp lệ của chu kỳ | Có transaction sẵn sàng gửi HIS |
+| 10 | ISOFHTool | Gửi 1 gói dữ liệu tổng hợp sang HIS kèm `Mã máy`, `thời điểm đo` gói và danh sách chỉ số đã gom | HIS nhận bản ghi sinh hiệu |
+| 11a | HIS | Nhận thành công | Tool cập nhật `Đã gửi HIS` |
+| 11b | HIS / Tool | Lỗi kết nối hoặc lỗi dữ liệu | Tool cập nhật `Gửi HIS lỗi` theo rule phase |
 
-### 5.3. Luồng 3 - Xử lý bản ghi đến trễ
+### 5.2. Luồng 2 - Xử lý bản ghi đến trễ
 
 | Bước | Tác nhân | Mô tả xử lý | Kết quả |
 | --- | --- | --- | --- |
@@ -139,27 +121,25 @@ tags:
 
 ## 6. Quy tắc nghiệp vụ
 
-- BR-01: `Mã hồ sơ` dùng trong tích hợp phải xác định duy nhất đúng 1 lượt khám hoặc 1 đợt điều trị trong HIS.
-- BR-02: HIS chỉ trả thông tin Người bệnh khi `Mã hồ sơ` thuộc lượt hoặc đợt điều trị có trạng thái `< Đã ra viện (100)`.
-- BR-03: Nếu `Mã hồ sơ` không tồn tại hoặc đã ở trạng thái `Đã ra viện (100)` thì HIS không trả thông tin để tránh đo vào hồ sơ cũ.
-- BR-04: `Find Patient` là điều kiện bắt buộc trước khi đo theo luồng tự động.
-- BR-05: Monitor phải gửi bản tin HL7 `QRY^A19` đến ISOFHTool khi người dùng chọn `Find Patient`.
-- BR-06: ISOFHTool phải chuyển tiếp yêu cầu tra cứu sang HIS và parse bản tin HL7 `ADR^A19` từ dữ liệu HIS trả về để phản hồi lại Monitor.
-- BR-07: Monitor phải hiển thị đầy đủ thông tin hành chính Người bệnh theo dữ liệu nhận từ HIS; tối thiểu phải có `Mã hồ sơ`, `Họ tên`, `Ngày sinh`, `Giới tính`. Nếu thiết bị hỗ trợ hiển thị `Tuổi` thì giá trị này lấy từ dữ liệu HIS trả về hoặc được suy ra từ `Ngày sinh`. Nếu thiếu các trường tối thiểu thì không được đo theo luồng tự động.
-- BR-08: Chu kỳ ghi nhận sinh hiệu ở Phase I là `10 phút`, tính từ thời điểm `Find Patient`.
-- BR-09: Mỗi lần `Find Patient` thành công đều mở một chu kỳ mới. Nếu đang có chu kỳ mở, chu kỳ cũ đóng ngay tại thời điểm `Find Patient` mới, kể cả khi quét lại cùng `Mã hồ sơ`.
-- BR-10: Trong cùng một chu kỳ, Tool gom nhiều bản tin `ORU^R01` thành 1 gói dữ liệu duy nhất để gửi sang HIS khi chu kỳ đóng.
-- BR-11: Với từng chỉ số trong cùng một chu kỳ, Tool chọn giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn lấy từ `OBR-7`, nếu `OBR-7` trống thì fallback `OBX-14`.
-- BR-12: Nếu có nhiều giá trị của cùng 1 chỉ số có cùng `thời điểm đo` chuẩn trong cùng một chu kỳ thì ưu tiên giá trị từ bản tin Tool nhận sau cùng.
-- BR-13: `thời điểm đo` của gói dữ liệu gửi HIS là `thời điểm đo` muộn nhất trong các chỉ số cuối cùng đã được chọn của chu kỳ.
-- BR-14: HIS chống trùng theo `Mã hồ sơ + thời điểm đo` của gói dữ liệu sinh hiệu.
-- BR-15: Mốc thời gian chuẩn để gom chu kỳ, chọn chỉ số cuối cùng, chống trùng và resend là `thời điểm đo` trong bản tin HL7, không dùng thời điểm Tool nhận bản tin.
-- BR-16: Bản ghi đến trễ được xử lý theo `OBR-7` hoặc `OBX-14` của cùng `PID-3`, vẫn nhận vào chu kỳ đã đóng.
-- BR-17: Nếu bản ghi đến trễ làm thay đổi ít nhất 1 chỉ số cuối cùng hoặc làm thay đổi `thời điểm đo` gói dữ liệu của chu kỳ thì Tool phải cho phép resend để cập nhật lại HIS.
-- BR-18: Dữ liệu trắng không gửi sang HIS.
-- BR-19: Sai `Mã máy` không được xem là lỗi resend nếu HIS vẫn nhận dữ liệu thành công.
-- BR-20: Phase I: lỗi kết nối retry tự động `3 lần`; lỗi dữ liệu không retry tự động.
-- BR-21: Phase I bắt buộc hỗ trợ resend thủ công theo từng giao dịch lỗi.
+- BR-01: Bản tin nhận sinh hiệu từ Monitor trong phạm vi tích hợp này là `ORU^R01`.
+- BR-02: Sau khi ISOFHTool nhận và parse được bản tin ở mức tối thiểu, Tool phải phản hồi lại Monitor bằng bản tin HL7 `ACK` để Monitor duy trì kết nối và tiếp tục gửi dữ liệu nếu có.
+- BR-03: `Mã hồ sơ` dùng trong tích hợp phải xác định duy nhất đúng 1 lượt khám hoặc 1 đợt điều trị trong HIS.
+- BR-04: Chu kỳ ghi nhận sinh hiệu ở Phase I là `10 phút`, tính từ thời điểm `Find Patient`.
+- BR-05: Mỗi lần `Find Patient` thành công đều mở một chu kỳ mới. Nếu đang có chu kỳ mở, chu kỳ cũ đóng ngay tại thời điểm `Find Patient` mới, kể cả khi quét lại cùng `Mã hồ sơ`.
+- BR-06: Trong cùng một chu kỳ, Tool gom nhiều bản tin `ORU^R01` thành 1 gói dữ liệu duy nhất để gửi sang HIS khi chu kỳ đóng.
+- BR-07: Với từng chỉ số trong cùng một chu kỳ, Tool chọn giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn lấy từ `OBR-7`, nếu `OBR-7` trống thì fallback `OBX-14`.
+- BR-08: Nếu có nhiều giá trị của cùng 1 chỉ số có cùng `thời điểm đo` chuẩn trong cùng một chu kỳ thì ưu tiên giá trị từ bản tin Tool nhận sau cùng.
+- BR-09: `thời điểm đo` của gói dữ liệu gửi HIS là `thời điểm đo` muộn nhất trong các chỉ số cuối cùng đã được chọn của chu kỳ.
+- BR-10: HIS chống trùng theo `Mã hồ sơ + thời điểm đo` của gói dữ liệu sinh hiệu.
+- BR-11: Mốc thời gian chuẩn để gom chu kỳ, chọn chỉ số cuối cùng, chống trùng và resend là `thời điểm đo` trong bản tin HL7, không dùng thời điểm Tool nhận bản tin.
+- BR-12: Bản ghi đến trễ được xử lý theo `OBR-7` hoặc `OBX-14` của cùng `PID-3`, vẫn nhận vào chu kỳ đã đóng.
+- BR-13: Nếu bản ghi đến trễ làm thay đổi ít nhất 1 chỉ số cuối cùng hoặc làm thay đổi `thời điểm đo` gói dữ liệu của chu kỳ thì Tool phải cho phép resend để cập nhật lại HIS.
+- BR-14: Dữ liệu trắng không gửi sang HIS.
+- BR-15: Sai `Mã máy` không được xem là lỗi resend nếu HIS vẫn nhận dữ liệu thành công.
+- BR-16: Phase I chỉ bắt buộc gửi `05` nhóm chỉ số sống cơ bản: `Mạch`, `Nhiệt độ`, `Huyết áp`, `Nhịp thở`, `SpO2`.
+- BR-17: Các chỉ số mở rộng như `MAP`, `PI`, `rPR` không mặc định đưa vào phạm vi gửi `SAKURA` ở Phase I nếu chưa có xác nhận bổ sung.
+- BR-18: Phase I: lỗi kết nối retry tự động `3 lần`; lỗi dữ liệu không retry tự động.
+- BR-19: Phase I bắt buộc hỗ trợ resend thủ công theo từng giao dịch lỗi.
 
 ## 7. Quy tắc kiểm tra dữ liệu
 
@@ -184,74 +164,11 @@ tags:
 | VR-HL7-04 | Có ít nhất 1 chỉ số hợp lệ từ `OBX-3` và `OBX-5` để đưa vào gói dữ liệu của chu kỳ | Ghi lỗi dữ liệu, không gửi HIS |
 | VR-HL7-05 | `Mã máy` đã được cấu hình trên Tool | `[Cần xác nhận]` có chặn gửi hay chỉ log cảnh báo; hiện tại nếu HIS vẫn nhận thì không xem là lỗi resend |
 | VR-HL7-06 | Nếu `OBR-7` trống và dùng `OBX-14` fallback thì các chỉ số được chọn trong cùng một gói phải xác định được `thời điểm đo` hợp lệ | Nếu không xác định được thì ghi lỗi dữ liệu, không gửi HIS |
+| VR-HL7-07 | Chỉ số nhận được phải có trong danh sách ghép chỉ số sống đang hiệu lực nếu muốn gửi `SAKURA` | Nếu không có thì chỉ log kỹ thuật, không tự gửi |
 
 ## 8. API nghiệp vụ cần có
 
-### 8.1. API 1 - Tra cứu Người bệnh theo `Mã hồ sơ`
-
-#### Mục tiêu
-
-- Cho phép Monitor gọi gián tiếp qua ISOFHTool để lấy đúng thông tin Người bệnh đang còn hiệu lực điều trị.
-
-#### Đầu vào nghiệp vụ tối thiểu
-
-| Trường | Bắt buộc | Nguồn | Ghi chú |
-| --- | --- | --- | --- |
-| `messageType` | Có | Từ Monitor | Giá trị kỳ vọng: `QRY^A19` |
-| `maHoSo` | Có | Từ barcode do Monitor quét | Là giá trị tương ứng `Mã hồ sơ` trong HIS |
-| `maMay` | [Cần xác nhận] | Tool / cấu hình thiết bị | Có thể dùng cho log truy vết, chưa bắt buộc làm điều kiện tra cứu |
-| `thoiDiemYeuCau` | [Cần xác nhận] | Tool | Dùng cho log và đối soát nếu cần |
-
-#### Mapping bản tin mẫu `QRY^A19`
-
-| Segment-Field | Giá trị mẫu | Ý nghĩa nghiệp vụ | Bắt buộc |
-| --- | --- | --- | --- |
-| `MSH-9` | `QRY^A19^QRY_A19` | Loại bản tin tra cứu Người bệnh | Có |
-| `MSH-10` | `20260422000011` | `messageControlId` để đối chiếu request/response | Có |
-| `QRD-1` | `20260422183855` | Thời điểm gửi yêu cầu tra cứu | Có |
-| `QRD-4` | `0422000011` | Mã truy vấn từ Monitor | Có |
-| `QRD-8` | `26031200119` | `Mã hồ sơ` dùng để tra cứu HIS theo bản tin mẫu hiện tại | Có |
-| `QRD-9` | `APN` | Thông tin bổ sung theo cấu trúc thiết bị; chưa dùng cho rule nghiệp vụ Phase I | Không |
-
-#### Đầu ra nghiệp vụ tối thiểu khi thành công
-
-| Trường | Bắt buộc | Ghi chú |
-| --- | --- | --- |
-| `messageType` | Có | Giá trị phản hồi cho Monitor: `ADR^A19` |
-| `maHoSo` | Có | Trả đúng theo hồ sơ hợp lệ |
-| `hoTen` | Có | Hiển thị trên Monitor |
-| `ngaySinh` | Có | Hiển thị trên Monitor |
-| `gioiTinh` | Có | Hiển thị trên Monitor |
-| `tuoi` | [Cần xác nhận] | Trả nếu HIS có sẵn hoặc Tool/HIS có rule suy ra từ `Ngày sinh` |
-| `trangThaiHoSo` | [Cần xác nhận] | Có thể trả cho Tool để log kỹ thuật |
-
-#### Mapping bản tin mẫu `ADR^A19`
-
-| Segment-Field | Giá trị mẫu | Ý nghĩa nghiệp vụ | Bắt buộc |
-| --- | --- | --- | --- |
-| `MSH-9` | `ADR^A19` | Loại bản tin phản hồi tra cứu Người bệnh | Có |
-| `MSA-1` | `AA` | Kết quả ACK thành công | Có |
-| `MSA-2` | `20260422000011` | `messageControlId` phản hồi lại đúng request | Có |
-| `QRD-1` | `20260422183855` | Thời điểm phản hồi truy vấn | Có |
-| `QRD-8` | `26031200119` | `Mã hồ sơ` phản hồi theo bản tin mẫu hiện tại | Có |
-| `QRF-1` | `MONITOR` | Nguồn hoặc ngữ cảnh phản hồi theo bản tin mẫu | Không |
-| `PID-3` | `26031200119` | `Mã hồ sơ` hiển thị trên Monitor | Có |
-| `PID-5` | `MAI NGOC NAM^^^^^^L^A` | `Họ tên` Người bệnh theo định dạng HL7 của thiết bị | Có |
-| `PID-7` | `19910427` | `Ngày sinh` | Có |
-| `PID-8` | `M` | `Giới tính` | Có |
-| `PV1-3` | `BED-001^^^` | Giường hoặc vị trí điều trị nếu cần hiển thị hoặc log | Không |
-
-#### Kết quả khi không thành công
-
-| Tình huống | Kết quả nghiệp vụ |
-| --- | --- |
-| Loại bản tin không phải `QRY^A19` | Không thực hiện tra cứu, ghi log kỹ thuật |
-| Không có `Mã hồ sơ` | Không trả thông tin Người bệnh |
-| `Mã hồ sơ` không tồn tại | Không trả thông tin Người bệnh |
-| `Mã hồ sơ` đã ở trạng thái `Đã ra viện (100)` hoặc lớn hơn | Không trả thông tin Người bệnh |
-| HIS lỗi kỹ thuật hoặc timeout | Tool ghi log, Điều dưỡng chuyển quy trình tay |
-
-### 8.2. API 2 - Gửi dữ liệu sinh hiệu vào HIS
+### 8.1. API 1 - Gửi dữ liệu sinh hiệu vào HIS
 
 #### Mục tiêu
 
@@ -265,7 +182,7 @@ tags:
 | `thoiDiemDo` | Có | Tool tính từ các chỉ số cuối cùng của chu kỳ | Là `thời điểm đo` muộn nhất trong các chỉ số đã chọn của gói, dùng để chống trùng |
 | `maMay` | Có | Từ cấu hình Tool | Lưu kèm để truy vết |
 | `chiSoSinhHieu` | Có | Từ các `OBX` hợp lệ trong cùng chu kỳ | Gồm danh sách chỉ số sau mapping; mỗi chỉ số lấy giá trị hợp lệ cuối cùng theo rule chu kỳ |
-| `nguonDuLieu` | [Cần xác nhận] | Tool sinh | Ví dụ `PVM-2701` |
+| `nguonDuLieu` | [Cần xác nhận] | Tool sinh | Ví dụ `PVM-2701`, `PVM-4761`, `SVM-7260` |
 | `maGiaoDichTool` | [Cần xác nhận] | Tool sinh | Dùng để truy vết resend và log |
 
 #### Đầu ra nghiệp vụ tối thiểu
@@ -302,41 +219,42 @@ tags:
 | --- | --- | --- | --- |
 | `007001^VITAL PR(spo2)` | Mạch / PR | `/min` | Chỉ số mạch lấy từ nhóm SpO2 |
 | `007000^VITAL SpO2` | SpO2 | `%` | Độ bão hòa oxy máu ngoại vi |
-| `072007^VITAL rPR(spo2)` | Nhịp mạch tham chiếu | `/min` | `[Cần xác nhận]` có lưu riêng trên HIS hay chỉ log |
-| `009000^NIBP SYS` | Huyết áp tâm thu | `mmHg` | Thuộc nhóm NIBP |
-| `009001^NIBP DIAS` | Huyết áp tâm trương | `mmHg` | Thuộc nhóm NIBP |
-| `009002^NIBP MEAN` | MAP / Huyết áp trung bình | `mmHg` | Thuộc nhóm NIBP |
+| `072007^VITAL rPR(spo2)` | Nhịp mạch tham chiếu | `/min` | Chưa mặc định gửi `SAKURA` ở Phase I nếu chưa có xác nhận bổ sung |
+| `009000^NIBP SYS` | Huyết áp tâm thu | `mmHg` | Thuộc nhóm `Huyết áp`, nằm trong phạm vi Phase I |
+| `009001^NIBP DIAS` | Huyết áp tâm trương | `mmHg` | Thuộc nhóm `Huyết áp`, nằm trong phạm vi Phase I |
+| `009002^NIBP MEAN` | MAP / Huyết áp trung bình | `mmHg` | Chưa mặc định gửi `SAKURA` ở Phase I nếu chưa có xác nhận bổ sung |
 
 ### 9.4. Mapping chỉ số dự kiến cần hỗ trợ ở HIS
 
 | Tên nghiệp vụ HIS | Nguồn HL7 | Trạng thái |
 | --- | --- | --- |
-| HR | `[Điền mã OBX-3]` | Chờ điền |
-| SpO2 | `007000^VITAL SpO2` | Đã có ví dụ |
-| RR | `[Điền mã OBX-3]` | Chờ điền |
-| TEMP | `[Điền mã OBX-3]` | Chờ điền |
-| Huyết áp tâm thu | `009000^NIBP SYS` | Đã có ví dụ |
-| Huyết áp tâm trương | `009001^NIBP DIAS` | Đã có ví dụ |
-| MAP | `009002^NIBP MEAN` | Đã có ví dụ |
-| PI | `[Điền mã OBX-3]` | Chờ điền |
+| Mạch | `007001^VITAL PR(spo2)` | Nằm trong phạm vi Phase I |
+| SpO2 | `007000^VITAL SpO2` | Nằm trong phạm vi Phase I |
+| Nhịp thở | `[Cần điền mã OBX-3 thực tế]` | Nằm trong phạm vi Phase I nhưng cần chốt mã thật |
+| Nhiệt độ | `[Cần điền mã OBX-3 thực tế]` | Nằm trong phạm vi Phase I nếu thiết bị hỗ trợ |
+| Huyết áp tâm thu | `009000^NIBP SYS` | Nằm trong phạm vi Phase I |
+| Huyết áp tâm trương | `009001^NIBP DIAS` | Nằm trong phạm vi Phase I |
+| MAP | `009002^NIBP MEAN` | Chưa mặc định gửi `SAKURA` ở Phase I |
+| PI | `[Cần điền mã OBX-3 thực tế]` | Chưa mặc định gửi `SAKURA` ở Phase I |
 
 ### 9.5. Bảng mapping chỉ số chi tiết để điền tiếp
 
 | STT | Chỉ số HIS | Mã `OBX-3` | Tên HL7 / mô tả | `OBX-5` kiểu dữ liệu | `OBX-6` đơn vị | Có bắt buộc trong Phase I không | Rule lấy giá trị cuối cùng trong chu kỳ | Ghi chú |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | HR | `[Điền]` | `[Điền]` | `[Điền]` | `[Điền]` | `[Điền]` | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | |
-| 2 | SpO2 | `007000^VITAL SpO2` | `VITAL SpO2` | `[Điền]` | `%` | `[Điền]` | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | |
-| 3 | RR | `[Điền]` | `[Điền]` | `[Điền]` | `[Điền]` | `[Điền]` | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | |
-| 4 | TEMP | `[Điền]` | `[Điền]` | `[Điền]` | `[Điền]` | `[Điền]` | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | |
-| 5 | Huyết áp tâm thu | `009000^NIBP SYS` | `NIBP SYS` | `[Điền]` | `mmHg` | `[Điền]` | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | |
-| 6 | Huyết áp tâm trương | `009001^NIBP DIAS` | `NIBP DIAS` | `[Điền]` | `mmHg` | `[Điền]` | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | |
-| 7 | MAP | `009002^NIBP MEAN` | `NIBP MEAN` | `[Điền]` | `mmHg` | `[Điền]` | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | |
-| 8 | PI | `[Điền]` | `[Điền]` | `[Điền]` | `[Điền]` | `[Điền]` | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | |
+| 1 | Mạch | `007001^VITAL PR(spo2)` | `VITAL PR(spo2)` | `NM` | `/min` | Có | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | Gửi `SAKURA` ở Phase I |
+| 2 | SpO2 | `007000^VITAL SpO2` | `VITAL SpO2` | `NM` | `%` | Có | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | Gửi `SAKURA` ở Phase I |
+| 3 | Nhịp thở | `[Cần điền]` | `[Cần điền]` | `[Cần điền]` | `[Cần điền]` | Có | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | Gửi `SAKURA` ở Phase I |
+| 4 | Nhiệt độ | `[Cần điền]` | `[Cần điền]` | `[Cần điền]` | `[Cần điền]` | Có nếu thiết bị hỗ trợ | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | Gửi `SAKURA` ở Phase I khi đã xác nhận |
+| 5 | Huyết áp tâm thu | `009000^NIBP SYS` | `NIBP SYS` | `NM` | `mmHg` | Có | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | Gửi `SAKURA` ở Phase I |
+| 6 | Huyết áp tâm trương | `009001^NIBP DIAS` | `NIBP DIAS` | `NM` | `mmHg` | Có | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | Gửi `SAKURA` ở Phase I |
+| 7 | MAP | `009002^NIBP MEAN` | `NIBP MEAN` | `NM` | `mmHg` | Không mặc định | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | Chỉ log hoặc chờ xác nhận thêm |
+| 8 | PI | `[Cần điền]` | `[Cần điền]` | `[Cần điền]` | `[Cần điền]` | Không mặc định | Lấy giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn | Chỉ log hoặc chờ xác nhận thêm |
 
 Ghi chú:
 
 - Chỉ map những mã `OBX-3` đã được chốt ở tài liệu mapping chi tiết.
 - Nếu nhận mã `OBX-3` chưa map thì Tool ghi log kỹ thuật, `[Cần xác nhận]` có đưa vào bảng lỗi hay không.
+- Trong Phase I, không tự đẩy `MAP`, `PI`, `rPR` sang `SAKURA` nếu chưa có xác nhận bổ sung.
 
 ## 10. Rule chu kỳ chi tiết
 
@@ -431,38 +349,31 @@ Ghi chú:
 
 ## 16. Điều kiện chấp nhận
 
-- AC-01: Khi người dùng chọn `Find Patient`, Monitor gửi bản tin HL7 `QRY^A19` đến ISOFHTool.
-- AC-02: ISOFHTool chuyển tiếp tra cứu sang HIS và parse bản tin HL7 `ADR^A19` từ dữ liệu HIS trả về để phản hồi lại Monitor.
-- AC-03: `Find Patient` chỉ trả thông tin khi `Mã hồ sơ` thuộc lượt hoặc đợt điều trị có trạng thái `< Đã ra viện (100)`.
-- AC-04: Nếu `Mã hồ sơ` không tồn tại hoặc đã ra viện thì HIS không trả thông tin Người bệnh.
-- AC-05: Khi `Find Patient` thành công, Monitor hiển thị đầy đủ thông tin hành chính theo dữ liệu HIS; tối thiểu có `Mã hồ sơ`, `Họ tên`, `Ngày sinh`, `Giới tính`.
-- AC-06: Nếu Monitor hiển thị thiếu thông tin tối thiểu thì không được tiếp tục đo theo luồng tự động.
-- AC-07: Tool parse được `PID-3`, `OBR-7`, `OBX-3`, `OBX-5`, `OBX-6` từ bản tin HL7 mẫu.
-- AC-08: Mỗi lần `Find Patient` thành công, Tool mở một chu kỳ mới; nếu đang có chu kỳ mở thì chu kỳ cũ đóng ngay tại thời điểm `Find Patient` mới.
-- AC-09: Tool ưu tiên dùng `OBR-7` làm `thời điểm đo` chuẩn; nếu `OBR-7` trống thì dùng `OBX-14` fallback.
-- AC-10: Trong cùng 1 chu kỳ, Tool gom nhiều bản tin `ORU^R01` thành 1 gói dữ liệu duy nhất gửi sang HIS.
-- AC-11: Với từng chỉ số trong cùng chu kỳ, Tool chọn giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn.
-- AC-12: Nếu có nhiều giá trị của cùng 1 chỉ số có cùng `thời điểm đo` chuẩn trong cùng chu kỳ thì Tool chọn giá trị từ bản tin nhận sau cùng.
-- AC-13: Nếu bản ghi đến trễ thuộc chu kỳ đã đóng thì Tool vẫn nhận theo `OBR-7` hoặc `OBX-14` của cùng `PID-3`.
-- AC-14: Nếu bản ghi đến trễ làm thay đổi ít nhất 1 chỉ số cuối cùng hoặc làm đổi `thời điểm đo` gói thì Tool cho phép resend để cập nhật lại HIS.
-- AC-15: Dữ liệu trắng không gửi sang HIS, nhưng phải lưu log kỹ thuật và bảng lỗi với `Lý do lỗi = Không có Mã hồ sơ`.
-- AC-16: Phase I: lỗi kết nối retry tự động đủ `3 lần`; nếu vẫn lỗi thì đưa vào `Gửi HIS lỗi`.
-- AC-17: Phase I: lỗi dữ liệu không retry tự động, phải vào `Gửi HIS lỗi` để theo dõi và resend thủ công.
-- AC-18: Nếu sai `Mã máy` nhưng HIS vẫn nhận dữ liệu thì không đưa vào danh sách resend.
-- AC-19: Tool phải lưu log tối thiểu cho `Find Patient`, nhận `ORU^R01`, gom chu kỳ, gửi HIS, resend và thay đổi cấu hình `Mã máy` / IP thiết bị.
+- AC-01: Khi Monitor gửi `ORU^R01`, ISOFHTool nhận và parse được bản tin ở mức tối thiểu.
+- AC-02: Sau khi nhận bản tin, ISOFHTool phản hồi lại Monitor bằng `ACK` để Monitor tiếp tục duy trì kết nối và gửi các lượt đo tiếp theo nếu có.
+- AC-03: Tool parse được `PID-3`, `OBR-7`, `OBX-3`, `OBX-5`, `OBX-6` từ bản tin HL7 mẫu.
+- AC-04: Mỗi lần `Find Patient` thành công, Tool mở một chu kỳ mới; nếu đang có chu kỳ mở thì chu kỳ cũ đóng ngay tại thời điểm `Find Patient` mới.
+- AC-05: Tool ưu tiên dùng `OBR-7` làm `thời điểm đo` chuẩn; nếu `OBR-7` trống thì dùng `OBX-14` fallback.
+- AC-06: Trong cùng 1 chu kỳ, Tool gom nhiều bản tin `ORU^R01` thành 1 gói dữ liệu duy nhất gửi sang HIS.
+- AC-07: Với từng chỉ số trong cùng chu kỳ, Tool chọn giá trị hợp lệ cuối cùng theo `thời điểm đo` chuẩn.
+- AC-08: Nếu có nhiều giá trị của cùng 1 chỉ số có cùng `thời điểm đo` chuẩn trong cùng chu kỳ thì Tool chọn giá trị từ bản tin nhận sau cùng.
+- AC-09: Tool chỉ gửi `05` nhóm chỉ số sống cơ bản của Phase I: `Mạch`, `Nhiệt độ`, `Huyết áp`, `Nhịp thở`, `SpO2`.
+- AC-10: Nếu bản ghi đến trễ thuộc chu kỳ đã đóng thì Tool vẫn nhận theo `OBR-7` hoặc `OBX-14` của cùng `PID-3`.
+- AC-11: Nếu bản ghi đến trễ làm thay đổi ít nhất 1 chỉ số cuối cùng hoặc làm đổi `thời điểm đo` gói thì Tool cho phép resend để cập nhật lại HIS.
+- AC-12: Dữ liệu trắng không gửi sang HIS, nhưng phải lưu log kỹ thuật và bảng lỗi với `Lý do lỗi = Không có Mã hồ sơ`.
+- AC-13: Phase I: lỗi kết nối retry tự động đủ `3 lần`; nếu vẫn lỗi thì đưa vào `Gửi HIS lỗi`.
+- AC-14: Phase I: lỗi dữ liệu không retry tự động, phải vào `Gửi HIS lỗi` để theo dõi và resend thủ công.
+- AC-15: Nếu sai `Mã máy` nhưng HIS vẫn nhận dữ liệu thì không đưa vào danh sách resend.
+- AC-16: Tool phải lưu log tối thiểu cho nhận `ORU^R01`, phản hồi `ACK`, gom chu kỳ, gửi HIS, resend và thay đổi cấu hình `Mã máy` / IP thiết bị.
 
 ## 17. Trường hợp ngoại lệ
 
-- EX-01: `Find Patient` không có kết quả vì `Mã hồ sơ` không tồn tại.
-- EX-02: `Find Patient` không có kết quả vì `Mã hồ sơ` đã ở trạng thái `Đã ra viện (100)`.
-- EX-03: Bản tin `Find Patient` không phải loại `QRY^A19`.
-- EX-04: ISOFHTool không parse được `ADR^A19` từ dữ liệu HIS trả về.
-- EX-05: Monitor hiển thị thiếu thông tin tối thiểu sau `Find Patient`.
-- EX-06: Bản tin HL7 thiếu `PID-3`.
-- EX-07: Bản tin HL7 thiếu `OBR-7` và `OBX-14`.
-- EX-08: Nhận mã `OBX-3` chưa có mapping.
-- EX-09: Lỗi kết nối HIS khi gửi dữ liệu sau khi đóng chu kỳ.
-- EX-10: Bản ghi đến trễ làm thay đổi gói dữ liệu cuối cùng của chu kỳ đã gửi thành công.
+- EX-01: Bản tin HL7 thiếu `PID-3`.
+- EX-02: Bản tin HL7 thiếu `OBR-7` và `OBX-14`.
+- EX-03: Nhận mã `OBX-3` chưa có mapping.
+- EX-04: Lỗi kết nối HIS khi gửi dữ liệu sau khi đóng chu kỳ.
+- EX-05: Bản ghi đến trễ làm thay đổi gói dữ liệu cuối cùng của chu kỳ đã gửi thành công.
+- EX-06: Monitor không nhận được `ACK` hoặc Tool không phản hồi `ACK` đúng thời điểm. `[Cần xác nhận]` chi tiết xử lý kỹ thuật |
 
 ## 18. Liên kết
 
@@ -470,12 +381,16 @@ Ghi chú:
 - Nghiệp vụ Phase I: `2026-05-01_NV_Tich hop thiet bi PVM-2701 vao HIS - Phase I.md`
 - Nghiệp vụ Phase II: `2026-05-02_NV_Tich hop thiet bi PVM-2701 vao HIS - Phase II.md`
 - Q&A chốt nghiệp vụ: `2026-05-02_QA_Chot nghiep vu_Tich hop thiet bi PVM-2701 vao HIS.md`
+- Danh sách ghép chỉ số sống: `2026-05-16_SRS_Detail_Danh sach ghep Chi so song SAKURA - Chi so song Monitor_Tich hop thiet bi PVM-2701 vao HIS.md`
+- Danh sách thiết bị Monitor: `2026-05-16_SRS_Detail_Khai bao danh sach thiet bi Monitor_Tich hop thiet bi PVM-2701 vao HIS.md`
+- Find Patient: `2026-05-16_SRS_Detail_Nhan yeu cau gui thong tin NB va tra thong tin cho Monitor_Tich hop thiet bi PVM-2701 vao HIS.md`
 
 ## 19. Điểm cần xác nhận trước khi triển khai
 
-- Tên endpoint thật, method thật, cơ chế auth thật của 2 API HIS.
+- Tên endpoint thật, method thật, cơ chế auth thật của API cập nhật sinh hiệu HIS.
 - Xác nhận lại mapping kỹ thuật cuối cùng giữa cấu trúc `QRY^A19` từ Monitor và `ADR^A19` phản hồi cho Monitor nếu thiết bị thực tế có khác bản tin mẫu.
-- Danh sách đầy đủ mã `OBX-3` cần map cho HR, RR, TEMP, PI và rule bắt buộc hoặc không bắt buộc theo từng chỉ số.
+- Danh sách đầy đủ mã `OBX-3` cần map cho `Nhịp thở`, `Nhiệt độ`, `PI` và rule bắt buộc hoặc không bắt buộc theo từng chỉ số.
+- Xác nhận lại `MAP` có nằm trong phạm vi gửi `SAKURA` của Phase I hay không.
 - Tên trường kỹ thuật thật trên HIS để lưu `Mã máy`, `thời điểm đo`, `nguồn dữ liệu`, `mã giao dịch Tool`.
 - Cách xử lý với mã `OBX-3` chưa map: chỉ log hay đưa vào bảng lỗi.
 - Thời gian giữ log kỹ thuật và bảng lỗi trên ISOFHTool.
@@ -488,4 +403,4 @@ Ghi chú:
 - [x] Đã có luồng thành công và ngoại lệ chính.
 - [x] Đã phản ánh xử lý bản ghi đến trễ, dữ liệu trắng, retry, resend.
 - [x] Đã chỉ rõ phần nào là fact và phần nào còn cần xác nhận.
-- [x] Nghiệp vụ đã đủ để handover cho DEV; các phần còn mở về contract API thật, danh sách mã `OBX-3` và rule update dữ liệu HIS khi resend sẽ được DEV bổ sung ở tài liệu kỹ thuật tích hợp.
+- [x] Tài liệu này đã đủ làm detail cho luồng nhận sinh hiệu khi đi cùng các note detail liên quan về `Find Patient`, `Danh sách ghép chỉ số sống` và `Danh sách thiết bị Monitor`.
